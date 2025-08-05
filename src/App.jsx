@@ -88,8 +88,8 @@ function App() {
     };
   }, [hoverTimers]);
 
-  // 计算总页数
-  const totalPages = Math.ceil(words.length / wordsPerPage);
+  // 计算总页数，确保至少为1
+  const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage));
 
   // 获取当前页的单词
   const indexOfLastWord = currentPage * wordsPerPage;
@@ -100,6 +100,31 @@ function App() {
   const handlePageChange = (page) => {
     setCurrentPage(page);
   };
+
+  // 添加J/K快捷键控制分页
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // 仅当没有输入框被聚焦时才触发快捷键
+      if (document.activeElement.tagName !== 'INPUT') {
+        if (e.key === 'j') {
+          e.preventDefault();
+          if (currentPage < totalPages) {
+            handlePageChange(currentPage + 1);
+          }
+        } else if (e.key === 'k') {
+          e.preventDefault();
+          if (currentPage > 1) {
+            handlePageChange(currentPage - 1);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentPage, totalPages, handlePageChange]);
 
   // 切换单词记忆状态
   const toggleRemember = (id) => {
