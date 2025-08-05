@@ -8,7 +8,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rememberedWords, setRememberedWords] = useState({});
   const [hoverTimers, setHoverTimers] = useState({});
-  const [wordsPerPage, setWordsPerPage] = useState(6);
+  const [hoveredWordId, setHoveredWordId] = useState(null);
+  const [wordsPerPage, setWordsPerPage] = useState(5);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -98,6 +99,13 @@ function App() {
 
   // 切换页面
   const handlePageChange = (page) => {
+    // 停止所有发音
+    window.speechSynthesis.cancel();
+    // 清除所有悬停定时器
+    Object.values(hoverTimers).forEach(timerId => {
+      clearInterval(timerId);
+    });
+    setHoverTimers({});
     setCurrentPage(page);
   };
 
@@ -139,6 +147,20 @@ function App() {
     const utterance = new SpeechSynthesisUtterance(word);
     window.speechSynthesis.speak(utterance);
   };
+
+  // 翻页后根据鼠标位置播放对应单词发音
+  useEffect(() => {
+    if (currentWords.length > 0) {
+      // 延迟一点时间，确保页面已经更新
+      setTimeout(() => {
+        // 查找鼠标悬停的单词
+        const hoveredWord = currentWords.find(word => word.id === hoveredWordId);
+        if (hoveredWord) {
+          playPronunciation(hoveredWord.word);
+        }
+      }, 100);
+    }
+  }, [currentPage, currentWords, playPronunciation, hoveredWordId]);
 
   // 开始悬停发音定时器
   const startHoverTimer = (id, word) => {
@@ -222,10 +244,20 @@ function App() {
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
                 onClick={() => toggleRemember(word.id)}
-                title={showDefinitions ? undefined : `${word.definition}
-点击播放发音`}
-                onMouseEnter={() => startHoverTimer(word.id, word.word)}
-                onMouseLeave={() => clearHoverTimer(word.id)}
+                title={showDefinitions ? undefined : `${word.definition} 点击播放发音`}
+                onMouseLeave={() => {
+                  // 停止所有发音
+                  window.speechSynthesis.cancel();
+                  // 清除所有悬停定时器
+                  Object.values(hoverTimers).forEach(timerId => {
+                    clearInterval(timerId);
+                  });
+                  setHoveredWordId(null);
+                }}
+                onMouseOver={() => {
+                  startHoverTimer(word.id, word.word);
+                  setHoveredWordId(word.id);
+                }}
               >
                 <span className="word-text">{word.word}</span>
                 {rememberedWords[word.id] && (
