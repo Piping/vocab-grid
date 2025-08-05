@@ -48,6 +48,46 @@ body, html {
   margin-bottom: 0.5rem;
 }
 
+.settings-panel {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.settings-select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+  background-color: white;
+  color: var(--text-color);
+}
+
+.settings-input {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--primary-color);
+  border-radius: 4px;
+  background-color: white;
+  color: var(--text-color);
+  width: 60px;
+}
+
+.word-definition {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-color);
+  max-width: 100%;
+  overflow-wrap: break-word;
+  padding: 0 0.5rem;
+}
+
 .words-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));

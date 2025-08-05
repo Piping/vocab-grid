@@ -8,7 +8,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rememberedWords, setRememberedWords] = useState({});
   const [hoverTimers, setHoverTimers] = useState({});
-  const wordsPerPage = 6;
+  const [wordsPerPage, setWordsPerPage] = useState(6);
+  const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -42,10 +43,20 @@ function App() {
         setLoading(false);
       }
 
-      // 加载已记住的单词
-      const saved = localStorage.getItem('rememberedWords');
-      if (saved) {
-        setRememberedWords(JSON.parse(saved));
+      // 加载已记住的单词和用户设置
+      const savedRemembered = localStorage.getItem('rememberedWords');
+      if (savedRemembered) {
+        setRememberedWords(JSON.parse(savedRemembered));
+      }
+
+      const savedWordsPerPage = localStorage.getItem('wordsPerPage');
+      if (savedWordsPerPage) {
+        setWordsPerPage(parseInt(savedWordsPerPage));
+      }
+
+      const savedShowDefinitions = localStorage.getItem('showDefinitions');
+      if (savedShowDefinitions) {
+        setShowDefinitions(JSON.parse(savedShowDefinitions));
       }
     };
 
@@ -56,6 +67,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem('rememberedWords', JSON.stringify(rememberedWords));
   }, [rememberedWords]);
+
+  // 保存用户设置
+  useEffect(() => {
+    localStorage.setItem('wordsPerPage', wordsPerPage);
+    // 当每页单词数改变时，重置到第一页
+    setCurrentPage(1);
+  }, [wordsPerPage]);
+
+  useEffect(() => {
+    localStorage.setItem('showDefinitions', JSON.stringify(showDefinitions));
+  }, [showDefinitions]);
 
   // 组件卸载时清除所有定时器
   useEffect(() => {
@@ -104,7 +126,7 @@ function App() {
     // 设置每隔2秒播放一次的定时器
     const timerId = setInterval(() => {
       playPronunciation(word);
-    }, 2000);
+    }, 1000);
     // 保存定时器ID
     setHoverTimers(prev => ({...prev, [id]: timerId}));
   };
@@ -125,7 +147,42 @@ function App() {
     <div className="app-container">
       <header className="app-header">
         <h1>Vocab Grid</h1>
-        <p>点击单词卡片标记已记住的单词，悬停查看释义</p>
+        <p>点击单词卡片标记已记住的单词</p>
+
+        <div className="settings-panel">
+          <div className="settings-item">
+              <label htmlFor="wordsPerPage">每页显示单词数 (1-100):</label>
+              <input
+                type="number"
+                id="wordsPerPage"
+                value={wordsPerPage}
+                min="1"
+                max="100"
+                onChange={(e) => {
+                  let value = parseInt(e.target.value);
+                  if (isNaN(value) || value < 1) {
+                    value = 1;
+                  } else if (value > 100) {
+                    value = 100;
+                  }
+                  setWordsPerPage(value);
+                }}
+                className="settings-input"
+              />
+            </div>
+
+          <div className="settings-item">
+            <label htmlFor="showDefinitions">
+              <input
+                type="checkbox"
+                id="showDefinitions"
+                checked={showDefinitions}
+                onChange={(e) => setShowDefinitions(e.target.checked)}
+              />
+              总是显示单词释义
+            </label>
+          </div>
+        </div>
       </header>
 
       {loading ? (
@@ -140,7 +197,7 @@ function App() {
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
                 onClick={() => toggleRemember(word.id)}
-                title={`${word.definition}
+                title={showDefinitions ? undefined : `${word.definition}
 点击播放发音`}
                 onMouseEnter={() => startHoverTimer(word.id, word.word)}
                 onMouseLeave={() => clearHoverTimer(word.id)}
@@ -148,6 +205,9 @@ function App() {
                 <span className="word-text">{word.word}</span>
                 {rememberedWords[word.id] && (
                   <span className="remembered-badge">✓</span>
+                )}
+                {showDefinitions && (
+                  <span className="word-definition">{word.definition}</span>
                 )}
               </div>
             ))}
