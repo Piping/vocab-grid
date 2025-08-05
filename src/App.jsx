@@ -13,6 +13,20 @@ function App() {
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [gridColumnStart, setGridColumnStart] = useState(3);
+
+  // 加载grid-column-start设置
+  useEffect(() => {
+    const savedGridColumnStart = localStorage.getItem('gridColumnStart');
+    if (savedGridColumnStart) {
+      setGridColumnStart(parseInt(savedGridColumnStart));
+    }
+  }, []);
+
+  // 保存grid-column-start设置
+  useEffect(() => {
+    localStorage.setItem('gridColumnStart', gridColumnStart.toString());
+  }, [gridColumnStart]);
 
   // 加载单词数据
   useEffect(() => {
@@ -218,6 +232,25 @@ function App() {
               />
             </div>
 
+            {currentWords.length === 1 && (
+              <div className="settings-item">
+                <label htmlFor="gridColumnStart">设置grid-column-start: </label>
+                <input
+                  type="number"
+                  id="gridColumnStart"
+                  value={gridColumnStart}
+                  min="1"
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    if (!isNaN(value) && value >= 1) {
+                      setGridColumnStart(value);
+                    }
+                  }}
+                  className="settings-input"
+                />
+              </div>
+            )}
+
           <div className="settings-item">
             <label htmlFor="showDefinitions">
               <input
@@ -243,8 +276,9 @@ function App() {
               <div 
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
+                style={currentWords.length === 1 ? { gridColumnStart } : {}}
                 onClick={() => toggleRemember(word.id)}
-                title={showDefinitions ? undefined : `${word.definition} 点击播放发音`}
+                title={showDefinitions ? undefined : `${word.definition} 悬停播放发音`}
                 onMouseLeave={() => {
                   // 停止所有发音
                   window.speechSynthesis.cancel();
