@@ -22,11 +22,11 @@ function App() {
 
   // 加载grid-column-start设置
   useEffect(() => {
-      const savedGridColumnStart = localStorage.getItem('gridColumnStart');
-      if (savedGridColumnStart) {
-        setGridColumnStart(parseInt(savedGridColumnStart, 10));
-      }
-    }, []);
+    const savedGridColumnStart = localStorage.getItem('gridColumnStart');
+    if (savedGridColumnStart) {
+      setGridColumnStart(parseInt(savedGridColumnStart, 10));
+    }
+  }, []);
 
   // 保存grid-column-start设置
   useEffect(() => {
@@ -36,29 +36,29 @@ function App() {
   // 下载TTS模型
   useEffect(() => {
     const downloadTTSModel = async () => {
-        // 避免重复下载
-        if (isModelDownloading || modelDownloaded) return;
-        
-        try {
-          setIsModelDownloading(true);
-          const storedModels = await tts.stored();
-          
-          if (!storedModels.includes('en_US-hfc_female-medium')) {
-            console.log('开始下载TTS模型...');
-            await tts.download('en_US-hfc_female-medium', (progress) => {
-              console.log(`TTS模型下载进度: ${Math.round(progress.loaded * 100 / progress.total)}%`);
-            });
-            console.log('TTS模型下载完成');
-            setModelDownloaded(true);
-          } else {
-            setModelDownloaded(true);
-          }
-        } catch (error) {
-          console.error('TTS模型下载失败:', error);
-        } finally {
-          setIsModelDownloading(false);
+      // 避免重复下载
+      if (isModelDownloading || modelDownloaded) return;
+
+      try {
+        setIsModelDownloading(true);
+        const storedModels = await tts.stored();
+
+        if (!storedModels.includes('en_US-hfc_female-medium')) {
+          console.log('开始下载TTS模型...');
+          await tts.download('en_US-hfc_female-medium', (progress) => {
+            console.log(`TTS模型下载进度: ${Math.round(progress.loaded * 100 / progress.total)}%`);
+          });
+          console.log('TTS模型下载完成');
+          setModelDownloaded(true);
+        } else {
+          setModelDownloaded(true);
         }
-      };
+      } catch (error) {
+        console.error('TTS模型下载失败:', error);
+      } finally {
+        setIsModelDownloading(false);
+      }
+    };
 
     downloadTTSModel();
   }, []);
@@ -197,87 +197,94 @@ function App() {
   };
 
   // 播放单词发音
+  const audioCache = useRef({});
+  const debounceTimer = useRef(null);
+
   const playPronunciation = useCallback(async (word) => {
-  try {
-    // 使用已下载的模型生成语音
-    console.log(modelDownloaded)
-    console.log(await tts.stored());
-    if (modelDownloaded) {
+    // 清除之前的定时器
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    // 设置新的定时器，300ms防抖延迟
+    debounceTimer.current = setTimeout(async () => {
       try {
-        // 生成语音
+        // 检查缓存中是否存在该单词的音频
+        if (audioCache.current[word]) {
+          const audio = new Audio();
+          audio.src = audioCache.current[word];
+          await audio.play();
+          console.log('使用缓存的音频播放:', word);
+          return;
+        }
+
+        console.log(await tts.stored());
         const wav = await tts.predict({
           text: word,
           voiceId: 'en_US-hfc_female-medium',
         }, console.log);
-        
-        // 播放语音
+        const audioUrl = URL.createObjectURL(wav);
+        // 将音频URL存入缓存
+        audioCache.current[word] = audioUrl;
         const audio = new Audio();
-        audio.src = URL.createObjectURL(wav);
+        audio.src = audioUrl;
         await audio.play();
         console.log('Piper TTS播放成功:', word);
-        return;
       } catch (ttsError) {
         console.error('Piper TTS播放失败:', ttsError);
+        // 模型未下载或播放失败时使用浏览器默认TTS
+        const utterance = new SpeechSynthesisUtterance(word);
+        window.speechSynthesis.speak(utterance);
+      }
+    }, 300); // 防抖延迟时间设置为1000ms
+  }, []);
+
+  // 翻页后自动发音逻辑 - 确保currentWords更新后执行
+  useEffect(() => {
+    if (shouldPlayPronunciation && currentWords.length > 0) {
+      console.log('页面切换完成，准备播放发音:', { timestamp: new Date().toISOString() });
+      try {
+        console.log('开始播放发音:', currentWords[0].word);
+        playPronunciation(currentWords[0].word);
+      } catch (error) {
+        console.error('发音播放失败:', error);
+      } finally {
+        setShouldPlayPronunciation(false);
       }
     }
-    
-    // 模型未下载或播放失败时使用浏览器默认TTS
-    const utterance = new SpeechSynthesisUtterance(word);
-    window.speechSynthesis.speak(utterance);
-  } catch (error) {
-    console.error('TTS播放失败:', error);
-    // 回退到浏览器默认TTS
-    const utterance = new SpeechSynthesisUtterance(word);
-    window.speechSynthesis.speak(utterance);
-  }
-}, []);
+  }, [shouldPlayPronunciation, currentWords, playPronunciation]);
 
-    // 翻页后自动发音逻辑 - 确保currentWords更新后执行
-    useEffect(() => {
-      if (shouldPlayPronunciation && currentWords.length > 0) {
-        console.log('页面切换完成，准备播放发音:', { timestamp: new Date().toISOString() });
-        try {
-          console.log('开始播放发音:', currentWords[0].word);
-          playPronunciation(currentWords[0].word);
-        } catch (error) {
-          console.error('发音播放失败:', error);
-        } finally {
-          setShouldPlayPronunciation(false);
-        }
-      }
-    }, [shouldPlayPronunciation, currentWords, playPronunciation]);
-
-    // 悬停触发的发音逻辑
+  // 悬停触发的发音逻辑
   useLayoutEffect(() => {
-      // 仅在有悬停单词时触发发音
-      if (currentWords.length > 0 && hoveredWordId) {
-        const targetWord = currentWords.find(word => word.id === hoveredWordId);
-        if (!targetWord) {
-          console.error('目标单词不存在:', { hoveredWordId, currentWords });
-          return;
-        }
-        // 使用setTimeout确保异步执行，避免浏览器语音API限制
-        console.log('准备播放悬停发音:', { targetWord: targetWord.word });
-        const timer = setTimeout(() => {
-          try {
-            console.log('开始播放悬停发音:', targetWord.word);
-            playPronunciation(targetWord.word);
-            // 仅在单词变化时取消之前的发音
-            if ((window.speechSynthesis.pending || window.speechSynthesis.speaking) &&
-                lastSpokenWordRef.current !== targetWord.word) {
-              console.log(`单词变化，取消之前的发音: ${lastSpokenWordRef.current}`);
-              window.speechSynthesis.cancel();
-            }
-          } catch (error) {
-            console.error('悬停发音播放失败:', error);
-          }
-        }, 50);
-        return () => {
-          clearTimeout(timer);
-          console.log('悬停定时器已清除');
-        };
+    // 仅在有悬停单词时触发发音
+    if (currentWords.length > 0 && hoveredWordId) {
+      const targetWord = currentWords.find(word => word.id === hoveredWordId);
+      if (!targetWord) {
+        console.error('目标单词不存在:', { hoveredWordId, currentWords });
+        return;
       }
-    }, [currentWords, playPronunciation, hoveredWordId]);
+      // 使用setTimeout确保异步执行，避免浏览器语音API限制
+      console.log('准备播放悬停发音:', { targetWord: targetWord.word });
+      const timer = setTimeout(() => {
+        try {
+          console.log('开始播放悬停发音:', targetWord.word);
+          playPronunciation(targetWord.word);
+          // 仅在单词变化时取消之前的发音
+          if ((window.speechSynthesis.pending || window.speechSynthesis.speaking) &&
+            lastSpokenWordRef.current !== targetWord.word) {
+            console.log(`单词变化，取消之前的发音: ${lastSpokenWordRef.current}`);
+            window.speechSynthesis.cancel();
+          }
+        } catch (error) {
+          console.error('悬停发音播放失败:', error);
+        }
+      }, 50);
+      return () => {
+        clearTimeout(timer);
+        console.log('悬停定时器已清除');
+      };
+    }
+  }, [currentWords, playPronunciation, hoveredWordId]);
 
   // 开始悬停发音定时器
   const startHoverTimer = (id, word) => {
@@ -292,7 +299,7 @@ function App() {
       playPronunciation(word);
     }, 500);
     // 保存定时器ID
-    setHoverTimers(prev => ({...prev, [id]: timerId}));
+    setHoverTimers(prev => ({ ...prev, [id]: timerId }));
   };
 
   // 清除悬停发音定时器
@@ -300,12 +307,26 @@ function App() {
     if (hoverTimers[id]) {
       clearInterval(hoverTimers[id]);
       setHoverTimers(prev => {
-        const newTimers = {...prev};
+        const newTimers = { ...prev };
         delete newTimers[id];
         return newTimers;
       });
     }
   };
+
+  // 组件卸载时清理缓存的音频URL
+  useEffect(() => {
+    return () => {
+      Object.values(audioCache.current).forEach(url => {
+        URL.revokeObjectURL(url);
+      });
+      audioCache.current = {};
+      // 清除防抖定时器
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="app-container">
@@ -315,42 +336,42 @@ function App() {
 
         <div className="settings-panel">
           <div className="settings-item">
-              <label htmlFor="wordsPerPage">每页显示单词数 (1-100):</label>
-              <input
-                type="number"
-                id="wordsPerPage"
-                value={wordsPerPage}
-                min="1"
-                max="100"
-                onChange={(e) => {
-                  let value = parseInt(e.target.value);
-                  if (isNaN(value) || value < 1) {
-                    value = 1;
-                  } else if (value > 100) {
-                    value = 100;
-                  }
-                  setWordsPerPage(value);
-                }}
-                className="settings-input"
-              />
-            </div>
+            <label htmlFor="wordsPerPage">每页显示单词数 (1-100):</label>
+            <input
+              type="number"
+              id="wordsPerPage"
+              value={wordsPerPage}
+              min="1"
+              max="100"
+              onChange={(e) => {
+                let value = parseInt(e.target.value);
+                if (isNaN(value) || value < 1) {
+                  value = 1;
+                } else if (value > 100) {
+                  value = 100;
+                }
+                setWordsPerPage(value);
+              }}
+              className="settings-input"
+            />
+          </div>
 
-            <div className="settings-item">
-              <label htmlFor="gridColumnStart">设置grid-column-start: </label>
-              <input
-                type="number"
-                id="gridColumnStart"
-                value={gridColumnStart}
-                min="1"
-                onChange={(e) => {
-                  const value = parseInt(e.target.value);
-                  if (!isNaN(value) && value >= 1) {
-                    setGridColumnStart(value);
-                  }
-                }}
-                className="settings-input"
-              />
-            </div>
+          <div className="settings-item">
+            <label htmlFor="gridColumnStart">设置grid-column-start: </label>
+            <input
+              type="number"
+              id="gridColumnStart"
+              value={gridColumnStart}
+              min="1"
+              onChange={(e) => {
+                const value = parseInt(e.target.value);
+                if (!isNaN(value) && value >= 1) {
+                  setGridColumnStart(value);
+                }
+              }}
+              className="settings-input"
+            />
+          </div>
 
           <div className="settings-item">
             <label htmlFor="showDefinitions">
@@ -371,13 +392,13 @@ function App() {
       ) : error ? (
         <div className="error">{error}</div>
       ) : (
-        <>        
+        <>
           <main className="words-grid">
             {currentWords.map(word => (
-              <div 
+              <div
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
-                style={ currentWords.length === 1 ? { gridColumnStart } : {} }
+                style={currentWords.length === 1 ? { gridColumnStart } : {}}
                 onClick={() => toggleRemember(word.id)}
                 title={showDefinitions ? undefined : `${word.definition} 悬停播放发音`}
                 onMouseLeave={() => {
