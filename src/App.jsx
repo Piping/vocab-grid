@@ -248,7 +248,7 @@ function App() {
     <div className="app-container">
       <header className="app-header">
         <h1>Vocab Grid</h1>
-        <p>点击单词卡片标记已记住的单词</p>
+        <p>点击单词卡片标记已记住的单词, 悬停卡片播放发音</p>
 
         <div className="settings-panel">
           <div className="settings-item">
