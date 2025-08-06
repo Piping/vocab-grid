@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import './App.css';
 import vocabDB from './idb';
 import vocabData from './assets/vocab_gre.json';
@@ -9,6 +9,8 @@ function App() {
   const [rememberedWords, setRememberedWords] = useState({});
   const [hoverTimers, setHoverTimers] = useState({});
   const [hoveredWordId, setHoveredWordId] = useState(null);
+  const lastSpokenWordRef = useRef('');
+  const [shouldPlayPronunciation, setShouldPlayPronunciation] = useState(false);
   const [wordsPerPage, setWordsPerPage] = useState(5);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -17,11 +19,11 @@ function App() {
 
   // 加载grid-column-start设置
   useEffect(() => {
-    const savedGridColumnStart = localStorage.getItem('gridColumnStart');
-    if (savedGridColumnStart) {
-      setGridColumnStart(parseInt(savedGridColumnStart));
-    }
-  }, []);
+      const savedGridColumnStart = localStorage.getItem('gridColumnStart');
+      if (savedGridColumnStart) {
+        setGridColumnStart(parseInt(savedGridColumnStart, 10));
+      }
+    }, []);
 
   // 保存grid-column-start设置
   useEffect(() => {
@@ -112,16 +114,21 @@ function App() {
   const currentWords = words.slice(indexOfFirstWord, indexOfLastWord);
 
   // 切换页面
-  const handlePageChange = (page) => {
-    // 停止所有发音
+  const handlePageChange = useCallback((page) => {
+    // 取消所有进行中的语音
     window.speechSynthesis.cancel();
-    // 清除所有悬停定时器
-    Object.values(hoverTimers).forEach(timerId => {
-      clearInterval(timerId);
-    });
-    setHoverTimers({});
     setCurrentPage(page);
-  };
+    setHoverTimers(currentTimers => {
+      // 清除所有定时器和超时
+      Object.values(currentTimers).forEach(timerId => {
+        clearInterval(timerId);
+        clearTimeout(timerId);
+      });
+      return {};
+    });
+    setHoveredWordId(null); // 翻页时显式重置hover状态
+    setShouldPlayPronunciation(true); // 请求播放发音
+  }, []);
 
   // 添加J/K快捷键控制分页
   useEffect(() => {
@@ -157,24 +164,57 @@ function App() {
   };
 
   // 播放单词发音
-  const playPronunciation = (word) => {
+  const playPronunciation = useCallback((word) => {
     const utterance = new SpeechSynthesisUtterance(word);
     window.speechSynthesis.speak(utterance);
-  };
+  }, []);
 
-  // 翻页后根据鼠标位置播放对应单词发音
-  useEffect(() => {
-    if (currentWords.length > 0) {
-      // 延迟一点时间，确保页面已经更新
-      setTimeout(() => {
-        // 查找鼠标悬停的单词
-        const hoveredWord = currentWords.find(word => word.id === hoveredWordId);
-        if (hoveredWord) {
-          playPronunciation(hoveredWord.word);
+    // 翻页后自动发音逻辑 - 确保currentWords更新后执行
+    useEffect(() => {
+      if (shouldPlayPronunciation && currentWords.length > 0) {
+        console.log('页面切换完成，准备播放发音:', { timestamp: new Date().toISOString() });
+        try {
+          console.log('开始播放发音:', currentWords[0].word);
+          playPronunciation(currentWords[0].word);
+        } catch (error) {
+          console.error('发音播放失败:', error);
+        } finally {
+          setShouldPlayPronunciation(false);
         }
-      }, 100);
-    }
-  }, [currentPage, currentWords, playPronunciation, hoveredWordId]);
+      }
+    }, [shouldPlayPronunciation, currentWords, playPronunciation]);
+
+    // 悬停触发的发音逻辑
+  useLayoutEffect(() => {
+      // 仅在有悬停单词时触发发音
+      if (currentWords.length > 0 && hoveredWordId) {
+        const targetWord = currentWords.find(word => word.id === hoveredWordId);
+        if (!targetWord) {
+          console.error('目标单词不存在:', { hoveredWordId, currentWords });
+          return;
+        }
+        // 使用setTimeout确保异步执行，避免浏览器语音API限制
+        console.log('准备播放悬停发音:', { targetWord: targetWord.word });
+        const timer = setTimeout(() => {
+          try {
+            console.log('开始播放悬停发音:', targetWord.word);
+            playPronunciation(targetWord.word);
+            // 仅在单词变化时取消之前的发音
+            if ((window.speechSynthesis.pending || window.speechSynthesis.speaking) &&
+                lastSpokenWordRef.current !== targetWord.word) {
+              console.log(`单词变化，取消之前的发音: ${lastSpokenWordRef.current}`);
+              window.speechSynthesis.cancel();
+            }
+          } catch (error) {
+            console.error('悬停发音播放失败:', error);
+          }
+        }, 50);
+        return () => {
+          clearTimeout(timer);
+          console.log('悬停定时器已清除');
+        };
+      }
+    }, [currentWords, playPronunciation, hoveredWordId]);
 
   // 开始悬停发音定时器
   const startHoverTimer = (id, word) => {
@@ -184,10 +224,10 @@ function App() {
     }
     // 立即播放一次
     playPronunciation(word);
-    // 设置每隔2秒播放一次的定时器
+    // 设置每隔500ms播放一次的定时器
     const timerId = setInterval(() => {
       playPronunciation(word);
-    }, 1000);
+    }, 500);
     // 保存定时器ID
     setHoverTimers(prev => ({...prev, [id]: timerId}));
   };
@@ -232,24 +272,22 @@ function App() {
               />
             </div>
 
-            {currentWords.length === 1 && (
-              <div className="settings-item">
-                <label htmlFor="gridColumnStart">设置grid-column-start: </label>
-                <input
-                  type="number"
-                  id="gridColumnStart"
-                  value={gridColumnStart}
-                  min="1"
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value);
-                    if (!isNaN(value) && value >= 1) {
-                      setGridColumnStart(value);
-                    }
-                  }}
-                  className="settings-input"
-                />
-              </div>
-            )}
+            <div className="settings-item">
+              <label htmlFor="gridColumnStart">设置grid-column-start: </label>
+              <input
+                type="number"
+                id="gridColumnStart"
+                value={gridColumnStart}
+                min="1"
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  if (!isNaN(value) && value >= 1) {
+                    setGridColumnStart(value);
+                  }
+                }}
+                className="settings-input"
+              />
+            </div>
 
           <div className="settings-item">
             <label htmlFor="showDefinitions">
@@ -276,16 +314,12 @@ function App() {
               <div 
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
-                style={currentWords.length === 1 ? { gridColumnStart } : {}}
+                style={ currentWords.length === 1 ? { gridColumnStart } : {} }
                 onClick={() => toggleRemember(word.id)}
                 title={showDefinitions ? undefined : `${word.definition} 悬停播放发音`}
                 onMouseLeave={() => {
-                  // 停止所有发音
                   window.speechSynthesis.cancel();
-                  // 清除所有悬停定时器
-                  Object.values(hoverTimers).forEach(timerId => {
-                    clearInterval(timerId);
-                  });
+                  clearHoverTimer(word.id);
                   setHoveredWordId(null);
                 }}
                 onMouseOver={() => {
@@ -342,4 +376,4 @@ function App() {
   );
 }
 
-export default App
+export default App;
