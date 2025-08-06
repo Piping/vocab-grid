@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react
 import './App.css';
 import vocabDB from './idb';
 import vocabData from './assets/vocab_gre.json';
+import * as tts from '@diffusionstudio/vits-web';
 
 function App() {
   const [words, setWords] = useState([]);
@@ -9,6 +10,8 @@ function App() {
   const [rememberedWords, setRememberedWords] = useState({});
   const [hoverTimers, setHoverTimers] = useState({});
   const [hoveredWordId, setHoveredWordId] = useState(null);
+  const [isModelDownloading, setIsModelDownloading] = useState(false);
+  const [modelDownloaded, setModelDownloaded] = useState(false);
   const lastSpokenWordRef = useRef('');
   const [shouldPlayPronunciation, setShouldPlayPronunciation] = useState(false);
   const [wordsPerPage, setWordsPerPage] = useState(5);
@@ -29,6 +32,36 @@ function App() {
   useEffect(() => {
     localStorage.setItem('gridColumnStart', gridColumnStart.toString());
   }, [gridColumnStart]);
+
+  // 下载TTS模型
+  useEffect(() => {
+    const downloadTTSModel = async () => {
+        // 避免重复下载
+        if (isModelDownloading || modelDownloaded) return;
+        
+        try {
+          setIsModelDownloading(true);
+          const storedModels = await tts.stored();
+          
+          if (!storedModels.includes('en_US-hfc_female-medium')) {
+            console.log('开始下载TTS模型...');
+            await tts.download('en_US-hfc_female-medium', (progress) => {
+              console.log(`TTS模型下载进度: ${Math.round(progress.loaded * 100 / progress.total)}%`);
+            });
+            console.log('TTS模型下载完成');
+            setModelDownloaded(true);
+          } else {
+            setModelDownloaded(true);
+          }
+        } catch (error) {
+          console.error('TTS模型下载失败:', error);
+        } finally {
+          setIsModelDownloading(false);
+        }
+      };
+
+    downloadTTSModel();
+  }, []);
 
   // 加载单词数据
   useEffect(() => {
@@ -164,10 +197,40 @@ function App() {
   };
 
   // 播放单词发音
-  const playPronunciation = useCallback((word) => {
+  const playPronunciation = useCallback(async (word) => {
+  try {
+    // 使用已下载的模型生成语音
+    console.log(modelDownloaded)
+    console.log(await tts.stored());
+    if (modelDownloaded) {
+      try {
+        // 生成语音
+        const wav = await tts.predict({
+          text: word,
+          voiceId: 'en_US-hfc_female-medium',
+        }, console.log);
+        
+        // 播放语音
+        const audio = new Audio();
+        audio.src = URL.createObjectURL(wav);
+        await audio.play();
+        console.log('Piper TTS播放成功:', word);
+        return;
+      } catch (ttsError) {
+        console.error('Piper TTS播放失败:', ttsError);
+      }
+    }
+    
+    // 模型未下载或播放失败时使用浏览器默认TTS
     const utterance = new SpeechSynthesisUtterance(word);
     window.speechSynthesis.speak(utterance);
-  }, []);
+  } catch (error) {
+    console.error('TTS播放失败:', error);
+    // 回退到浏览器默认TTS
+    const utterance = new SpeechSynthesisUtterance(word);
+    window.speechSynthesis.speak(utterance);
+  }
+}, []);
 
     // 翻页后自动发音逻辑 - 确保currentWords更新后执行
     useEffect(() => {
