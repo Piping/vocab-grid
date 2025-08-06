@@ -199,7 +199,7 @@ function App() {
   // 播放单词发音
   const audioCache = useRef({});
   const debounceTimer = useRef(null);
-  const HOVER_DELAY = 200;      // 悬停延迟播放时间
+  const HOVER_DELAY = 100;      // 悬停延迟播放时间
   const HOVER_INTERVAL = 1500;  // 悬停间隔播放时间(大于防抖时间)
   const DEBOUNCE_DELAY = 500;  // 防抖延迟时间
 
@@ -226,14 +226,16 @@ function App() {
           const utterance = new SpeechSynthesisUtterance(word);
           window.speechSynthesis.speak(utterance);
           console.log(await tts.stored());
-          const wav = await tts.predict({
-            text: word,
-            voiceId: 'en_US-hfc_female-medium',
-          }, console.log);
-          const audioUrl = URL.createObjectURL(wav);
-          // 将音频URL存入缓存
-          audioCache.current[word] = audioUrl;
-          console.log('Piper TTS生成成功:', word);
+          setTimeout(async () => {
+            const wav = await tts.predict({
+              text: word,
+              voiceId: 'en_US-hfc_female-medium',
+            }, console.log);
+            const audioUrl = URL.createObjectURL(wav);
+            // 将音频URL存入缓存
+            audioCache.current[word] = audioUrl;
+            console.log('Piper TTS生成成功:', word);
+          }, 1);
         }
       } catch (ttsError) {
         console.error('Piper TTS播放失败:', ttsError);
