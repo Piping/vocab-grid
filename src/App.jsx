@@ -9,11 +9,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rememberedWords, setRememberedWords] = useState({});
   const [hoverTimers, setHoverTimers] = useState({});
-  const [hoveredWordId, setHoveredWordId] = useState(null);
   const [isModelDownloading, setIsModelDownloading] = useState(false);
   const [modelDownloaded, setModelDownloaded] = useState(false);
-  const lastSpokenWordRef = useRef('');
-  const [shouldPlayPronunciation, setShouldPlayPronunciation] = useState(false);
   const [wordsPerPage, setWordsPerPage] = useState(5);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -132,8 +129,11 @@ function App() {
   // 组件卸载时清除所有定时器
   useEffect(() => {
     return () => {
-      Object.values(hoverTimers).forEach(timerId => {
-        clearInterval(timerId);
+      Object.values(hoverTimers).forEach(timers => {
+        if (timers) {
+          clearTimeout(timers.delayTimer);
+          clearInterval(timers.intervalTimer);
+        }
       });
     };
   }, [hoverTimers]);
@@ -153,14 +153,14 @@ function App() {
     setCurrentPage(page);
     setHoverTimers(currentTimers => {
       // 清除所有定时器和超时
-      Object.values(currentTimers).forEach(timerId => {
-        clearInterval(timerId);
-        clearTimeout(timerId);
+      Object.values(currentTimers).forEach(timers => {
+        if (timers) {
+          clearTimeout(timers.delayTimer);
+          clearInterval(timers.intervalTimer);
+        }
       });
       return {};
     });
-    setHoveredWordId(null); // 翻页时显式重置hover状态
-    setShouldPlayPronunciation(true); // 请求播放发音
   }, []);
 
   // 添加J/K快捷键控制分页
@@ -199,14 +199,19 @@ function App() {
   // 播放单词发音
   const audioCache = useRef({});
   const debounceTimer = useRef(null);
+  const HOVER_DELAY = 200;      // 悬停延迟播放时间
+  const HOVER_INTERVAL = 1500;  // 悬停间隔播放时间(大于防抖时间)
+  const DEBOUNCE_DELAY = 500;  // 防抖延迟时间
 
-  const playPronunciation = useCallback(async (word) => {
+  const playPronunciation = useCallback(async (word, skipDebounce = false) => {
     // 清除之前的定时器
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
-    // 设置新的定时器，300ms防抖延迟
+    // 根据skipDebounce参数决定是否跳过防抖
+    const delay = skipDebounce ? 0 : DEBOUNCE_DELAY;
+
     debounceTimer.current = setTimeout(async () => {
       try {
         // 检查缓存中是否存在该单词的音频
@@ -216,96 +221,58 @@ function App() {
           await audio.play();
           console.log('使用缓存的音频播放:', word);
           return;
+        } else {
+          // 声音未缓存的时候使用系统TTS
+          const utterance = new SpeechSynthesisUtterance(word);
+          window.speechSynthesis.speak(utterance);
+          console.log(await tts.stored());
+          const wav = await tts.predict({
+            text: word,
+            voiceId: 'en_US-hfc_female-medium',
+          }, console.log);
+          const audioUrl = URL.createObjectURL(wav);
+          // 将音频URL存入缓存
+          audioCache.current[word] = audioUrl;
+          console.log('Piper TTS生成成功:', word);
         }
-
-        console.log(await tts.stored());
-        const wav = await tts.predict({
-          text: word,
-          voiceId: 'en_US-hfc_female-medium',
-        }, console.log);
-        const audioUrl = URL.createObjectURL(wav);
-        // 将音频URL存入缓存
-        audioCache.current[word] = audioUrl;
-        const audio = new Audio();
-        audio.src = audioUrl;
-        await audio.play();
-        console.log('Piper TTS播放成功:', word);
       } catch (ttsError) {
         console.error('Piper TTS播放失败:', ttsError);
         // 模型未下载或播放失败时使用浏览器默认TTS
         const utterance = new SpeechSynthesisUtterance(word);
         window.speechSynthesis.speak(utterance);
       }
-    }, 300); // 防抖延迟时间设置为1000ms
+    }, delay);
   }, []);
-
-  // 翻页后自动发音逻辑 - 确保currentWords更新后执行
-  useEffect(() => {
-    if (shouldPlayPronunciation && currentWords.length > 0) {
-      console.log('页面切换完成，准备播放发音:', { timestamp: new Date().toISOString() });
-      try {
-        console.log('开始播放发音:', currentWords[0].word);
-        playPronunciation(currentWords[0].word);
-      } catch (error) {
-        console.error('发音播放失败:', error);
-      } finally {
-        setShouldPlayPronunciation(false);
-      }
-    }
-  }, [shouldPlayPronunciation, currentWords, playPronunciation]);
-
-  // 悬停触发的发音逻辑
-  useLayoutEffect(() => {
-    // 仅在有悬停单词时触发发音
-    if (currentWords.length > 0 && hoveredWordId) {
-      const targetWord = currentWords.find(word => word.id === hoveredWordId);
-      if (!targetWord) {
-        console.error('目标单词不存在:', { hoveredWordId, currentWords });
-        return;
-      }
-      // 使用setTimeout确保异步执行，避免浏览器语音API限制
-      console.log('准备播放悬停发音:', { targetWord: targetWord.word });
-      const timer = setTimeout(() => {
-        try {
-          console.log('开始播放悬停发音:', targetWord.word);
-          playPronunciation(targetWord.word);
-          // 仅在单词变化时取消之前的发音
-          if ((window.speechSynthesis.pending || window.speechSynthesis.speaking) &&
-            lastSpokenWordRef.current !== targetWord.word) {
-            console.log(`单词变化，取消之前的发音: ${lastSpokenWordRef.current}`);
-            window.speechSynthesis.cancel();
-          }
-        } catch (error) {
-          console.error('悬停发音播放失败:', error);
-        }
-      }, 50);
-      return () => {
-        clearTimeout(timer);
-        console.log('悬停定时器已清除');
-      };
-    }
-  }, [currentWords, playPronunciation, hoveredWordId]);
 
   // 开始悬停发音定时器
   const startHoverTimer = (id, word) => {
     // 清除可能存在的旧定时器
-    if (hoverTimers[id]) {
-      clearInterval(hoverTimers[id]);
-    }
-    // 立即播放一次
-    playPronunciation(word);
-    // 设置每隔500ms播放一次的定时器
-    const timerId = setInterval(() => {
-      playPronunciation(word);
-    }, 500);
-    // 保存定时器ID
-    setHoverTimers(prev => ({ ...prev, [id]: timerId }));
+    clearHoverTimer(id);
+
+    const delayTimerId = setTimeout(() => {
+      // 立即播放一次
+      playPronunciation(word, true);
+      // 然后设置间隔播放
+      const intervalTimerId = setInterval(() => {
+        playPronunciation(word, true);
+      }, HOVER_INTERVAL);
+      setHoverTimers(prev => ({
+        ...prev,
+        [id]: { delayTimer: null, intervalTimer: intervalTimerId }
+      }));
+    }, HOVER_DELAY);
+
+    setHoverTimers(prev => ({
+      ...prev,
+      [id]: { delayTimer: delayTimerId, intervalTimer: null }
+    }));
   };
 
   // 清除悬停发音定时器
   const clearHoverTimer = (id) => {
     if (hoverTimers[id]) {
-      clearInterval(hoverTimers[id]);
+      clearTimeout(hoverTimers[id].delayTimer);
+      clearInterval(hoverTimers[id].intervalTimer);
       setHoverTimers(prev => {
         const newTimers = { ...prev };
         delete newTimers[id];
@@ -404,11 +371,9 @@ function App() {
                 onMouseLeave={() => {
                   window.speechSynthesis.cancel();
                   clearHoverTimer(word.id);
-                  setHoveredWordId(null);
                 }}
                 onMouseOver={() => {
                   startHoverTimer(word.id, word.word);
-                  setHoveredWordId(word.id);
                 }}
               >
                 <span className="word-text">{word.word}</span>
