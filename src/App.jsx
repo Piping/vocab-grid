@@ -16,6 +16,11 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridColumnStart, setGridColumnStart] = useState(3);
+  
+  // TTS Worker相关状态
+  const [ttsWorker, setTtsWorker] = useState(null);
+  const [isWorkerReady, setIsWorkerReady] = useState(false);
+  const workerMessageQueue = useRef([]);
 
   // 加载grid-column-start设置
   useEffect(() => {
@@ -30,34 +35,52 @@ function App() {
     localStorage.setItem('gridColumnStart', gridColumnStart.toString());
   }, [gridColumnStart]);
 
-  // 下载TTS模型
+  // 初始化TTS Worker
   useEffect(() => {
-    const downloadTTSModel = async () => {
-      // 避免重复下载
-      if (isModelDownloading || modelDownloaded) return;
-
-      try {
-        setIsModelDownloading(true);
-        const storedModels = await tts.stored();
-
-        if (!storedModels.includes('en_US-hfc_female-medium')) {
-          console.log('开始下载TTS模型...');
-          await tts.download('en_US-hfc_female-medium', (progress) => {
-            console.log(`TTS模型下载进度: ${Math.round(progress.loaded * 100 / progress.total)}%`);
-          });
-          console.log('TTS模型下载完成');
-          setModelDownloaded(true);
-        } else {
-          setModelDownloaded(true);
+    // 创建Worker
+    const worker = new Worker(new URL('./tts.worker.js', import.meta.url), { type: 'module' });
+    
+    // 设置Worker消息处理
+    worker.onmessage = (event) => {
+      const { type, word, audioData, error } = event.data;
+      
+      if (type === 'worker-ready') {
+        setIsWorkerReady(true);
+        // 处理队列中的消息
+        while (workerMessageQueue.current.length > 0) {
+          const message = workerMessageQueue.current.shift();
+          worker.postMessage(message);
         }
-      } catch (error) {
-        console.error('TTS模型下载失败:', error);
-      } finally {
-        setIsModelDownloading(false);
+      } else if (type === 'model-loaded') {
+        console.log('TTS模型在Worker中加载完成');
+      } else if (type === 'success') {
+        // 处理成功的TTS结果
+        const audioUrl = URL.createObjectURL(audioData);
+        // 将音频URL存入缓存
+        audioCache.current[word] = audioUrl;
+        console.log('Worker TTS生成成功:', word);
+        
+        // 播放音频
+        const audio = new Audio();
+        audio.src = audioUrl;
+        audio.play().catch(e => console.error('音频播放失败:', e));
+      } else if (type === 'error') {
+        console.error('Worker TTS处理失败:', word, error);
+        // 降级到主线程TTS
+        const utterance = new SpeechSynthesisUtterance(word);
+        window.speechSynthesis.speak(utterance);
       }
     };
-
-    downloadTTSModel();
+    
+    // 发送初始化消息
+    worker.postMessage({ type: 'init' });
+    
+    setTtsWorker(worker);
+    
+    // 清理函数
+    return () => {
+      worker.terminate();
+    };
   }, []);
 
   // 加载单词数据
@@ -150,6 +173,12 @@ function App() {
   const handlePageChange = useCallback((page) => {
     // 取消所有进行中的语音
     window.speechSynthesis.cancel();
+    
+    // 向Worker发送取消消息
+    if (ttsWorker && isWorkerReady) {
+      ttsWorker.postMessage({ type: 'cancel' });
+    }
+    
     setCurrentPage(page);
     setHoverTimers(currentTimers => {
       // 清除所有定时器和超时
@@ -161,7 +190,7 @@ function App() {
       });
       return {};
     });
-  }, []);
+  }, [ttsWorker, isWorkerReady]);
 
   // 添加J/K快捷键控制分页
   useEffect(() => {
@@ -203,6 +232,16 @@ function App() {
   const HOVER_INTERVAL = 1500;  // 悬停间隔播放时间(大于防抖时间)
   const DEBOUNCE_DELAY = 500;  // 防抖延迟时间
 
+  // 向Worker发送消息的辅助函数
+  const sendToWorker = useCallback((message) => {
+    if (isWorkerReady && ttsWorker) {
+      ttsWorker.postMessage(message);
+    } else {
+      // 如果Worker未准备好，将消息加入队列
+      workerMessageQueue.current.push(message);
+    }
+  }, [isWorkerReady, ttsWorker]);
+
   const playPronunciation = useCallback(async (word, skipDebounce = false) => {
     // 清除之前的定时器
     if (debounceTimer.current) {
@@ -222,29 +261,20 @@ function App() {
           console.log('使用缓存的音频播放:', word);
           return;
         } else {
-          // 声音未缓存的时候使用系统TTS
+          // 声音未缓存的时候使用Worker TTS
+          sendToWorker({ type: 'predict', word });
+          // 使用浏览器默认TTS作为最终降级方案
           const utterance = new SpeechSynthesisUtterance(word);
           window.speechSynthesis.speak(utterance);
-          console.log(await tts.stored());
-          setTimeout(async () => {
-            const wav = await tts.predict({
-              text: word,
-              voiceId: 'en_US-hfc_female-medium',
-            }, console.log);
-            const audioUrl = URL.createObjectURL(wav);
-            // 将音频URL存入缓存
-            audioCache.current[word] = audioUrl;
-            console.log('Piper TTS生成成功:', word);
-          }, 1);
         }
       } catch (ttsError) {
-        console.error('Piper TTS播放失败:', ttsError);
-        // 模型未下载或播放失败时使用浏览器默认TTS
+        console.error('TTS播放失败:', ttsError);
+        // 使用浏览器默认TTS作为最终降级方案
         const utterance = new SpeechSynthesisUtterance(word);
         window.speechSynthesis.speak(utterance);
       }
     }, delay);
-  }, []);
+  }, [sendToWorker]);
 
   // 开始悬停发音定时器
   const startHoverTimer = (id, word) => {
