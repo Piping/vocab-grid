@@ -59,16 +59,8 @@ function App() {
         // 将音频URL存入缓存
         audioCache.current[word] = audioUrl;
         console.log('Worker TTS生成成功:', word);
-        
-        // 播放音频
-        const audio = new Audio();
-        audio.src = audioUrl;
-        audio.play().catch(e => console.error('音频播放失败:', e));
       } else if (type === 'error') {
         console.error('Worker TTS处理失败:', word, error);
-        // 降级到主线程TTS
-        const utterance = new SpeechSynthesisUtterance(word);
-        window.speechSynthesis.speak(utterance);
       }
     };
     
