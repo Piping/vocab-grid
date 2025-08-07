@@ -16,6 +16,8 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [gridColumnStart, setGridColumnStart] = useState(3);
+  const [ttsVoice, setTtsVoice] = useState('en_US-hfc_female-medium');
+  const [availableVoices, setAvailableVoices] = useState([]);
   
   // TTS Worker相关状态
   const [ttsWorker, setTtsWorker] = useState(null);
@@ -42,17 +44,30 @@ function App() {
     
     // 设置Worker消息处理
     worker.onmessage = (event) => {
-      const { type, word, audioData, error } = event.data;
+      const { type, word, audioData, error, voiceId, voices } = event.data;
       
       if (type === 'worker-ready') {
         setIsWorkerReady(true);
+        // 发送当前选择的语音模型给Worker
+        worker.postMessage({ type: 'set-voice', voiceId: ttsVoice });
         // 处理队列中的消息
         while (workerMessageQueue.current.length > 0) {
           const message = workerMessageQueue.current.shift();
           worker.postMessage(message);
         }
       } else if (type === 'model-loaded') {
-        console.log('TTS模型在Worker中加载完成');
+        console.log('TTS模型在Worker中加载完成:', voiceId);
+      } else if (type === 'voice-set') {
+        console.log('TTS语音模型已设置:', voiceId);
+      } else if (type === 'voices-list') {
+        // 处理获取到的语音模型列表
+        console.log('获取到语音模型列表:', voices);
+        // 转换语音模型列表格式
+        const formattedVoices = voices.map(voice => ({
+          id: voice.key,
+          name: `${voice.name} (${voice.language})`
+        }));
+        setAvailableVoices(formattedVoices);
       } else if (type === 'success') {
         // 处理成功的TTS结果
         const audioUrl = URL.createObjectURL(audioData);
@@ -74,6 +89,13 @@ function App() {
       worker.terminate();
     };
   }, []);
+
+  // 当TTS语音模型改变时，通知Worker
+  useEffect(() => {
+    if (ttsWorker && isWorkerReady) {
+      ttsWorker.postMessage({ type: 'set-voice', voiceId: ttsVoice });
+    }
+  }, [ttsVoice, ttsWorker, isWorkerReady]);
 
   // 加载单词数据
   useEffect(() => {
@@ -227,12 +249,17 @@ function App() {
   // 向Worker发送消息的辅助函数
   const sendToWorker = useCallback((message) => {
     if (isWorkerReady && ttsWorker) {
-      ttsWorker.postMessage(message);
+      // 如果是预测消息，添加当前选择的语音模型
+      if (message.type === 'predict') {
+        ttsWorker.postMessage({ ...message, voiceId: ttsVoice });
+      } else {
+        ttsWorker.postMessage(message);
+      }
     } else {
       // 如果Worker未准备好，将消息加入队列
       workerMessageQueue.current.push(message);
     }
-  }, [isWorkerReady, ttsWorker]);
+  }, [isWorkerReady, ttsWorker, ttsVoice]);
 
   const playPronunciation = useCallback(async (word, skipDebounce = false) => {
     // 清除之前的定时器
@@ -319,6 +346,26 @@ function App() {
     };
   }, []);
 
+  // 获取可用的语音模型
+  useEffect(() => {
+    const fetchVoices = async () => {
+      try {
+        // 通过Worker获取可用的语音模型
+        if (ttsWorker && isWorkerReady) {
+          // 发送获取语音模型列表的消息
+          ttsWorker.postMessage({ type: 'get-voices' });
+        }
+      } catch (error) {
+        console.error('获取语音模型列表失败:', error);
+      }
+    };
+
+    // 等待Worker准备好后再获取语音模型列表
+    if (isWorkerReady && ttsWorker) {
+      fetchVoices();
+    }
+  }, [isWorkerReady, ttsWorker]);
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -374,6 +421,22 @@ function App() {
               />
               总是显示单词释义
             </label>
+          </div>
+
+          <div className="settings-item">
+            <label htmlFor="ttsVoice">TTS语音模型:</label>
+            <select
+              id="ttsVoice"
+              value={ttsVoice}
+              onChange={(e) => setTtsVoice(e.target.value)}
+              className="settings-input"
+            >
+              {availableVoices.map(voice => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.id}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </header>
