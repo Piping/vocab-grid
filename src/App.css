@@ -95,12 +95,15 @@ body, html {
 }
 
 .words-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  /* 改为弹性布局，自动居中单张/多张卡片 */
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
   padding: 1rem;
   overflow-y: auto;
   flex-grow: 1;
+  justify-content: center;
+  align-content: flex-start;
 }
 
 .word-card {
@@ -112,11 +115,14 @@ body, html {
   cursor: pointer;
   transition: all 0.3s ease;
   position: relative;
-  min-height: 120px;
+  height: 500px; /* 固定卡片高度 */
+  overflow-y: auto; /* 内容过长时内部滚动 */
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  /* 固定卡片宽度，配合 flex 居中 */
+  width: 250px;
 }
 
 .word-card:hover {
@@ -240,20 +246,18 @@ body, html {
 }
 
 @media (max-width: 768px) {
-  .words-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  .word-card {
+    width: 150px;
   }
-
   .word-text {
     font-size: 1.2rem;
   }
 }
 
 @media (max-width: 480px) {
-  .words-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  .word-card {
+    width: 120px;
   }
-
   .app-header h1 {
     font-size: 1.5rem;
   }

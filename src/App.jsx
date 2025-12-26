@@ -1,8 +1,8 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import './App.css';
 import vocabDB from './idb';
 import vocabData from './assets/vocab_gre.json';
-import * as tts from '@diffusionstudio/vits-web';
+// 移除未使用的直接导入，TTS 通过 Worker 调用
 
 function App() {
   const [words, setWords] = useState([]);
@@ -15,7 +15,7 @@ function App() {
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [gridColumnStart, setGridColumnStart] = useState(3);
+  // 已移除手动 grid-column-start 设置，改为自动居中布局
   const [ttsVoice, setTtsVoice] = useState('en_US-hfc_female-medium');
   const [availableVoices, setAvailableVoices] = useState([]);
   // 导入导出相关
@@ -33,18 +33,7 @@ function App() {
   const [isWorkerReady, setIsWorkerReady] = useState(false);
   const workerMessageQueue = useRef([]);
 
-  // 加载grid-column-start设置
-  useEffect(() => {
-    const savedGridColumnStart = localStorage.getItem('gridColumnStart');
-    if (savedGridColumnStart) {
-      setGridColumnStart(parseInt(savedGridColumnStart, 10));
-    }
-  }, []);
-
-  // 保存grid-column-start设置
-  useEffect(() => {
-    localStorage.setItem('gridColumnStart', gridColumnStart.toString());
-  }, [gridColumnStart]);
+  // 移除 grid-column-start 本地存储逻辑
 
   // 初始化TTS Worker
   useEffect(() => {
@@ -529,22 +518,7 @@ function App() {
             />
           </div>
 
-          <div className="settings-item">
-            <label htmlFor="gridColumnStart">设置grid-column-start: </label>
-            <input
-              type="number"
-              id="gridColumnStart"
-              value={gridColumnStart}
-              min="1"
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                if (!isNaN(value) && value >= 1) {
-                  setGridColumnStart(value);
-                }
-              }}
-              className="settings-input"
-            />
-          </div>
+          {/* 移除 grid-column-start 设置项 */}
 
           <div className="settings-item">
             <label htmlFor="showDefinitions">
@@ -614,7 +588,7 @@ function App() {
               <div
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
-                style={currentWords.length === 1 ? { gridColumnStart } : {}}
+                
                 onClick={() => toggleRemember(word.id)}
                 title={showDefinitions ? undefined : `${word.definition} 悬停播放发音`}
                 onMouseLeave={() => {
