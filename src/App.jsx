@@ -27,6 +27,8 @@ function App() {
   const lastTapRef = useRef({ time: 0, x: 0, y: 0, id: null });
   // 最近指向的单词（用于键盘 u 切换发音）
   const lastPointerWordRef = useRef(null); // { id, word }
+  // 翻页顺序发音
+  const [alwaysSpeakOnPage, setAlwaysSpeakOnPage] = useState(false);
   
   // TTS Worker相关状态
   const [ttsWorker, setTtsWorker] = useState(null);
@@ -140,6 +142,11 @@ function App() {
       if (savedShowDefinitions) {
         setShowDefinitions(JSON.parse(savedShowDefinitions));
       }
+
+      const savedAlwaysSpeak = localStorage.getItem('alwaysSpeakOnPage');
+      if (savedAlwaysSpeak) {
+        setAlwaysSpeakOnPage(JSON.parse(savedAlwaysSpeak));
+      }
     };
 
     loadWords();
@@ -160,6 +167,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('showDefinitions', JSON.stringify(showDefinitions));
   }, [showDefinitions]);
+
+  useEffect(() => {
+    localStorage.setItem('alwaysSpeakOnPage', JSON.stringify(alwaysSpeakOnPage));
+  }, [alwaysSpeakOnPage]);
 
   // 组件卸载时清除所有定时器
   useEffect(() => {
@@ -489,6 +500,27 @@ function App() {
     }
   }, [isWorkerReady, ttsWorker]);
 
+  // 翻页后顺序发音当前页所有单词（使用浏览器语音队列，保证顺序）
+  useEffect(() => {
+    if (!alwaysSpeakOnPage) return;
+    if (loading || error) return;
+    if (!Array.isArray(currentWords) || currentWords.length === 0) return;
+    try {
+      // 取消可能存在的队列，重新开始
+      window.speechSynthesis.cancel();
+      // 将本页所有单词入队
+      currentWords.forEach(w => {
+        if (!w || !w.word) return;
+        const utter = new SpeechSynthesisUtterance(w.word);
+        window.speechSynthesis.speak(utter);
+        // 同步请求Worker生成缓存，提升后续悬停的播放体验
+        sendToWorker({ type: 'predict', word: w.word });
+      });
+    } catch (e) {
+      console.error('顺序发音失败:', e);
+    }
+  }, [alwaysSpeakOnPage, currentWords, loading, error, sendToWorker]);
+
   return (
     <div className="app-container">
       <header className="app-header">
@@ -529,6 +561,18 @@ function App() {
                 onChange={(e) => setShowDefinitions(e.target.checked)}
               />
               总是显示单词释义
+            </label>
+          </div>
+
+          <div className="settings-item">
+            <label htmlFor="alwaysSpeakOnPage">
+              <input
+                type="checkbox"
+                id="alwaysSpeakOnPage"
+                checked={alwaysSpeakOnPage}
+                onChange={(e) => setAlwaysSpeakOnPage(e.target.checked)}
+              />
+              翻页顺序发音当前页
             </label>
           </div>
 
