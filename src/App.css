@@ -156,6 +156,28 @@ body, html {
   font-weight: bold;
 }
 
+/* 小喇叭播放按钮 */
+.word-speak-btn {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: transparent;
+  border: none;
+  color: #64748b; /* slate-500 */
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px;
+}
+.word-speak-btn:hover {
+  color: var(--primary-color);
+}
+.word-speak-btn:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .pagination-controls {
   display: flex;
   justify-content: center;

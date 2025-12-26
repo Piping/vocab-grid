@@ -8,7 +8,6 @@ function App() {
   const [words, setWords] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [rememberedWords, setRememberedWords] = useState({});
-  const [hoverTimers, setHoverTimers] = useState({});
   const [isModelDownloading, setIsModelDownloading] = useState(false);
   const [modelDownloaded, setModelDownloaded] = useState(false);
   const [wordsPerPage, setWordsPerPage] = useState(5);
@@ -25,8 +24,8 @@ function App() {
   const [visibleDefs, setVisibleDefs] = useState({}); // { [id]: true }
   const suppressNextClickRef = useRef(false);
   const lastTapRef = useRef({ time: 0, x: 0, y: 0, id: null });
-  // 最近指向的单词（用于键盘 u 切换发音）
-  const lastPointerWordRef = useRef(null); // { id, word }
+  // 最近交互的单词（用于 u 键播放）
+  const lastActiveWordRef = useRef(null); // { id, word }
   // 翻页顺序发音
   const [alwaysSpeakOnPage, setAlwaysSpeakOnPage] = useState(false);
   
@@ -34,6 +33,8 @@ function App() {
   const [ttsWorker, setTtsWorker] = useState(null);
   const [isWorkerReady, setIsWorkerReady] = useState(false);
   const workerMessageQueue = useRef([]);
+  // 翻页顺序发音控制
+  const pageSpeakTokenRef = useRef(0);
 
   // 移除 grid-column-start 本地存储逻辑
 
@@ -172,17 +173,20 @@ function App() {
     localStorage.setItem('alwaysSpeakOnPage', JSON.stringify(alwaysSpeakOnPage));
   }, [alwaysSpeakOnPage]);
 
-  // 组件卸载时清除所有定时器
+  // 组件级别 Audio 元素，复用同一个播放器
+  const audioRef = useRef(null);
   useEffect(() => {
+    audioRef.current = new Audio();
+    audioRef.current.preload = 'auto';
     return () => {
-      Object.values(hoverTimers).forEach(timers => {
-        if (timers) {
-          clearTimeout(timers.delayTimer);
-          clearInterval(timers.intervalTimer);
+      try {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = '';
         }
-      });
+      } catch {}
     };
-  }, [hoverTimers]);
+  }, []);
 
   // 计算总页数，确保至少为1
   const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage));
@@ -203,23 +207,121 @@ function App() {
     }
     
     setCurrentPage(page);
-    // 重置最近指向的发音对象
-    if (lastPointerWordRef) {
-      lastPointerWordRef.current = null;
+    // 停止正在播放的音频
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    } catch {}
+    // 重置当前激活单词
+    if (lastActiveWordRef) {
+      lastActiveWordRef.current = null;
     }
-    setHoverTimers(currentTimers => {
-      // 清除所有定时器和超时
-      Object.values(currentTimers).forEach(timers => {
-        if (timers) {
-          clearTimeout(timers.delayTimer);
-          clearInterval(timers.intervalTimer);
-        }
-      });
-      return {};
-    });
+    // 取消当前页顺序发音
+    pageSpeakTokenRef.current = 0;
   }, [ttsWorker, isWorkerReady]);
 
-  // 添加J/K快捷键控制分页
+  // 键盘快捷键（J/K 翻页、I 当前页切换记住、O 切换释义、U 播放当前）
+  // 注意：依赖 playPronunciation，因此此 effect 放在其后面定义
+
+  // 切换单词记忆状态
+  const toggleRemember = (id) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
+    setRememberedWords(prev => ({
+      ...prev,
+      [id]: !prev[id]
+    }));
+  };
+
+  // 播放单词发音（复用单个 Audio 元素）
+  const audioCache = useRef({});
+
+  // 向Worker发送消息的辅助函数
+  const sendToWorker = useCallback((message) => {
+    if (isWorkerReady && ttsWorker) {
+      // 如果是预测消息，添加当前选择的语音模型
+      if (message.type === 'predict') {
+        ttsWorker.postMessage({ ...message, voiceId: ttsVoice });
+      } else {
+        ttsWorker.postMessage(message);
+      }
+    } else {
+      // 如果Worker未准备好，将消息加入队列
+      workerMessageQueue.current.push(message);
+    }
+  }, [isWorkerReady, ttsWorker, ttsVoice]);
+
+  const playPronunciation = useCallback(async (word) => {
+    try {
+      // 全面取消：系统TTS、顺序朗读、Worker 队列、当前 Audio
+      try { window.speechSynthesis.cancel(); } catch {}
+      pageSpeakTokenRef.current = 0;
+      if (ttsWorker && isWorkerReady) {
+        try { ttsWorker.postMessage({ type: 'cancel' }); } catch {}
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+
+      // 如果缓存已有音频，直接播放
+      if (audioCache.current[word]) {
+        audioRef.current.src = audioCache.current[word];
+        await audioRef.current.play();
+        console.log('使用缓存的音频播放:', word);
+        return;
+      }
+
+      // 未命中缓存：请求离线生成，同时使用系统TTS作为即时反馈
+      sendToWorker({ type: 'predict', word });
+      setTimeout(() => {
+        try {
+          const utterance = new SpeechSynthesisUtterance(word);
+          window.speechSynthesis.speak(utterance);
+        } catch {}
+      }, 60);
+    } catch (ttsError) {
+      console.error('TTS播放失败:', ttsError);
+      try {
+        const utterance = new SpeechSynthesisUtterance(word);
+        window.speechSynthesis.speak(utterance);
+      } catch {}
+    }
+  }, [sendToWorker, isWorkerReady, ttsWorker]);
+
+  // 顺序朗读当前页（用 Web Speech API 串行，避免跳词）
+  const startSequentialSpeak = useCallback((list) => {
+    const token = Date.now();
+    pageSpeakTokenRef.current = token;
+    let idx = 0;
+    const next = () => {
+      if (pageSpeakTokenRef.current !== token) return; // 已被取消
+      if (!Array.isArray(list) || idx >= list.length) return;
+      const item = list[idx++];
+      if (!item || !item.word) {
+        return next();
+      }
+      // 讲话一个
+      try {
+        const utter = new SpeechSynthesisUtterance(item.word);
+        utter.onend = () => setTimeout(next, 60);
+        utter.onerror = () => setTimeout(next, 60);
+        window.speechSynthesis.speak(utter);
+        // 异步生成缓存，提升后续点击体验
+        sendToWorker({ type: 'predict', word: item.word });
+      } catch {
+        setTimeout(next, 60);
+      }
+    };
+    // 给 cancel 一点时间生效
+    setTimeout(next, 60);
+  }, [sendToWorker]);
+
+  // 添加J/K快捷键控制分页 + U 播放
   useEffect(() => {
     const handleKeyDown = (e) => {
       // 仅当没有输入框被聚焦时才触发快捷键
@@ -250,19 +352,13 @@ function App() {
           setShowDefinitions(prev => !prev);
         } else if (e.key === 'u') {
           e.preventDefault();
-          // 键盘切换当前单词的发音：有则停，无则启定时（立即播放）
-          // 优先使用最近指向的单词，否则使用当前页第一个
-          let target = lastPointerWordRef.current;
-          if (!target && currentWords.length > 0) {
+          // 播放最近交互的单词；若无则播放当前页第一个
+          let target = lastActiveWordRef.current;
+          if ((!target || target.id == null) && currentWords.length > 0) {
             target = { id: currentWords[0].id, word: currentWords[0].word };
           }
-          if (target && target.id != null) {
-            if (hoverTimers[target.id]) {
-              window.speechSynthesis.cancel();
-              clearHoverTimer(target.id);
-            } else {
-              startHoverTimer(target.id, target.word);
-            }
+          if (target && target.word) {
+            playPronunciation(target.word);
           }
         }
       }
@@ -272,112 +368,9 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentPage, totalPages, handlePageChange, currentWords, hoverTimers]);
+  }, [currentPage, totalPages, handlePageChange, currentWords, playPronunciation]);
 
-  // 切换单词记忆状态
-  const toggleRemember = (id) => {
-    if (suppressNextClickRef.current) {
-      suppressNextClickRef.current = false;
-      return;
-    }
-    setRememberedWords(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
-
-  // 播放单词发音
-  const audioCache = useRef({});
-  const debounceTimer = useRef(null);
-  const HOVER_DELAY = 100;      // 悬停延迟播放时间
-  const HOVER_INTERVAL = 1500;  // 悬停间隔播放时间(大于防抖时间)
-  const DEBOUNCE_DELAY = 500;  // 防抖延迟时间
-
-  // 向Worker发送消息的辅助函数
-  const sendToWorker = useCallback((message) => {
-    if (isWorkerReady && ttsWorker) {
-      // 如果是预测消息，添加当前选择的语音模型
-      if (message.type === 'predict') {
-        ttsWorker.postMessage({ ...message, voiceId: ttsVoice });
-      } else {
-        ttsWorker.postMessage(message);
-      }
-    } else {
-      // 如果Worker未准备好，将消息加入队列
-      workerMessageQueue.current.push(message);
-    }
-  }, [isWorkerReady, ttsWorker, ttsVoice]);
-
-  const playPronunciation = useCallback(async (word, skipDebounce = false) => {
-    // 清除之前的定时器
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    // 根据skipDebounce参数决定是否跳过防抖
-    const delay = skipDebounce ? 0 : DEBOUNCE_DELAY;
-
-    debounceTimer.current = setTimeout(async () => {
-      try {
-        // 检查缓存中是否存在该单词的音频
-        if (audioCache.current[word]) {
-          const audio = new Audio();
-          audio.src = audioCache.current[word];
-          await audio.play();
-          console.log('使用缓存的音频播放:', word);
-          return;
-        } else {
-          // 声音未缓存的时候使用Worker TTS
-          sendToWorker({ type: 'predict', word });
-          // 使用浏览器默认TTS作为最终降级方案
-          const utterance = new SpeechSynthesisUtterance(word);
-          window.speechSynthesis.speak(utterance);
-        }
-      } catch (ttsError) {
-        console.error('TTS播放失败:', ttsError);
-        // 使用浏览器默认TTS作为最终降级方案
-        const utterance = new SpeechSynthesisUtterance(word);
-        window.speechSynthesis.speak(utterance);
-      }
-    }, delay);
-  }, [sendToWorker]);
-
-  // 开始悬停发音定时器
-  const startHoverTimer = (id, word) => {
-    // 清除可能存在的旧定时器
-    clearHoverTimer(id);
-
-    const delayTimerId = setTimeout(() => {
-      // 立即播放一次
-      playPronunciation(word, true);
-      // 然后设置间隔播放
-      const intervalTimerId = setInterval(() => {
-        playPronunciation(word, true);
-      }, HOVER_INTERVAL);
-      setHoverTimers(prev => ({
-        ...prev,
-        [id]: { delayTimer: null, intervalTimer: intervalTimerId }
-      }));
-    }, HOVER_DELAY);
-
-    setHoverTimers(prev => ({
-      ...prev,
-      [id]: { delayTimer: delayTimerId, intervalTimer: null }
-    }));
-  };
-
-  // 清除悬停发音定时器
-  const clearHoverTimer = (id) => {
-    if (hoverTimers[id]) {
-      clearTimeout(hoverTimers[id].delayTimer);
-      clearInterval(hoverTimers[id].intervalTimer);
-      setHoverTimers(prev => {
-        const newTimers = { ...prev };
-        delete newTimers[id];
-        return newTimers;
-      });
-    }
-  };
+  // 已取消悬停播放逻辑
 
   // 切换单词释义显示
   const toggleDefinition = useCallback((id) => {
@@ -399,10 +392,6 @@ function App() {
         URL.revokeObjectURL(url);
       });
       audioCache.current = {};
-      // 清除防抖定时器
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
     };
   }, []);
 
@@ -500,33 +489,34 @@ function App() {
     }
   }, [isWorkerReady, ttsWorker]);
 
-  // 翻页后顺序发音当前页所有单词（使用浏览器语音队列，保证顺序）
+  // 翻页后顺序发音当前页所有单词（串行，避免跳词）
   useEffect(() => {
     if (!alwaysSpeakOnPage) return;
     if (loading || error) return;
     if (!Array.isArray(currentWords) || currentWords.length === 0) return;
     try {
-      // 取消可能存在的队列，重新开始
+      // 取消现有合成与音频播放
       window.speechSynthesis.cancel();
-      // 将本页所有单词入队
-      currentWords.forEach(w => {
-        if (!w || !w.word) return;
-        const utter = new SpeechSynthesisUtterance(w.word);
-        window.speechSynthesis.speak(utter);
-        // 同步请求Worker生成缓存，提升后续悬停的播放体验
-        sendToWorker({ type: 'predict', word: w.word });
-      });
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      if (ttsWorker && isWorkerReady) {
+        ttsWorker.postMessage({ type: 'cancel' });
+      }
+      // 串行播放，避免 API cancel 时首个发音被吞
+      startSequentialSpeak(currentWords);
     } catch (e) {
       console.error('顺序发音失败:', e);
     }
-  }, [alwaysSpeakOnPage, currentWords, loading, error, sendToWorker]);
+  }, [alwaysSpeakOnPage, currentWords, loading, error, startSequentialSpeak, isWorkerReady, ttsWorker]);
 
   return (
     <div className="app-container">
       <header className="app-header">
         <h1>Vocab Grid</h1>
-        <p>点击单词卡片标记已记住的单词, 悬停卡片播放发音</p>
-        <p className="shortcut-hint">快捷键: j/k 翻页 · i 当前页切换记住 · o 切换释义显示 · u 切换当前词发音 · 右键/双击切换释义</p>
+        <p>点击单词卡片标记已记住的单词</p>
+        <p className="shortcut-hint">快捷键: j/k 翻页 · i 当前页切换记住 · o 切换释义显示 · u 播放当前（最近交互或当前页第一个） · 右键/双击切换释义</p>
 
         <div className="settings-panel">
           <div className="settings-item">
@@ -632,19 +622,14 @@ function App() {
               <div
                 key={word.id}
                 className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
-                
-                onClick={() => toggleRemember(word.id)}
-                title={showDefinitions ? undefined : `${word.definition} 悬停播放发音`}
-                onMouseLeave={() => {
-                  window.speechSynthesis.cancel();
-                  clearHoverTimer(word.id);
+                onClick={() => {
+                  lastActiveWordRef.current = { id: word.id, word: word.word };
+                  toggleRemember(word.id);
                 }}
-                onMouseOver={() => {
-                  lastPointerWordRef.current = { id: word.id, word: word.word };
-                  startHoverTimer(word.id, word.word);
-                }}
+                title={showDefinitions ? undefined : `${word.definition}`}
                 onContextMenu={(e) => {
                   e.preventDefault();
+                  lastActiveWordRef.current = { id: word.id, word: word.word };
                   toggleDefinition(word.id);
                 }}
                 onTouchEnd={(e) => {
@@ -659,16 +644,31 @@ function App() {
                     const dist = Math.hypot(dx, dy);
                     if (last.id === word.id && dt < 300 && dist < 30) {
                       suppressNextClickRef.current = true;
+                      lastActiveWordRef.current = { id: word.id, word: word.word };
                       toggleDefinition(word.id);
                       lastTapRef.current = { time: 0, x: 0, y: 0, id: null };
                     } else {
                       lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, id: word.id };
+                      lastActiveWordRef.current = { id: word.id, word: word.word };
                     }
                   } catch (err) {
                     console.error('处理触摸事件失败:', err);
                   }
                 }}
               >
+                <button
+                  className="word-speak-btn"
+                  type="button"
+                  aria-label="播放发音"
+                  title="播放发音"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    lastActiveWordRef.current = { id: word.id, word: word.word };
+                    playPronunciation(word.word);
+                  }}
+                >
+                  🔊
+                </button>
                 <span className="word-text">{word.word}</span>
                 {rememberedWords[word.id] && (
                   <span className="remembered-badge">✓</span>
