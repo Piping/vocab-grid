@@ -257,6 +257,57 @@ function App() {
     }
   }, [isWorkerReady, ttsWorker, ttsVoice]);
 
+  // 使用系统语音播放一个单词，返回完成的 Promise
+  const speakWithSystem = useCallback((word) => {
+    return new Promise((resolve) => {
+      try {
+        const utter = new SpeechSynthesisUtterance(word);
+        utter.onend = () => resolve();
+        utter.onerror = () => resolve();
+        window.speechSynthesis.speak(utter);
+      } catch {
+        resolve();
+      }
+    });
+  }, []);
+
+  // 使用复用的 Audio 元素播放缓存音频，返回完成的 Promise
+  const playWithAudio = useCallback((url) => {
+    return new Promise((resolve) => {
+      const audio = audioRef.current;
+      if (!audio) return resolve();
+      try {
+        // 清理旧监听
+        const onDone = () => {
+          audio.removeEventListener('ended', onDone);
+          audio.removeEventListener('error', onDone);
+          resolve();
+        };
+        audio.addEventListener('ended', onDone, { once: true });
+        audio.addEventListener('error', onDone, { once: true });
+        audio.pause();
+        audio.currentTime = 0;
+        audio.src = url;
+        audio.play().catch(() => {
+          onDone();
+        });
+      } catch {
+        resolve();
+      }
+    });
+  }, []);
+
+  // 统一的“优先TTS（缓存），否则fallback到系统TTS，并异步请求生成缓存”单词播报
+  const speakOnce = useCallback(async (word) => {
+    if (audioCache.current[word]) {
+      await playWithAudio(audioCache.current[word]);
+      return;
+    }
+    // 先请求生成缓存，再用系统TTS作为回退
+    sendToWorker({ type: 'predict', word });
+    await speakWithSystem(word);
+  }, [playWithAudio, speakWithSystem, sendToWorker]);
+
   const playPronunciation = useCallback(async (word) => {
     try {
       // 全面取消：系统TTS、顺序朗读、Worker 队列、当前 Audio
@@ -270,58 +321,34 @@ function App() {
         audioRef.current.currentTime = 0;
       }
 
-      // 如果缓存已有音频，直接播放
-      if (audioCache.current[word]) {
-        audioRef.current.src = audioCache.current[word];
-        await audioRef.current.play();
-        console.log('使用缓存的音频播放:', word);
-        return;
-      }
-
-      // 未命中缓存：请求离线生成，同时使用系统TTS作为即时反馈
-      sendToWorker({ type: 'predict', word });
-      setTimeout(() => {
-        try {
-          const utterance = new SpeechSynthesisUtterance(word);
-          window.speechSynthesis.speak(utterance);
-        } catch {}
-      }, 60);
+      // 统一逻辑：优先用缓存TTS，否则系统TTS并异步生成缓存
+      // 给 cancel 一点时间生效
+      await new Promise(r => setTimeout(r, 60));
+      await speakOnce(word);
     } catch (ttsError) {
       console.error('TTS播放失败:', ttsError);
-      try {
-        const utterance = new SpeechSynthesisUtterance(word);
-        window.speechSynthesis.speak(utterance);
-      } catch {}
+      await speakWithSystem(word);
     }
-  }, [sendToWorker, isWorkerReady, ttsWorker]);
+  }, [isWorkerReady, ttsWorker, speakOnce, speakWithSystem]);
 
-  // 顺序朗读当前页（用 Web Speech API 串行，避免跳词）
+  // 顺序朗读当前页（统一逻辑：缓存TTS优先，否则系统TTS）
   const startSequentialSpeak = useCallback((list) => {
     const token = Date.now();
     pageSpeakTokenRef.current = token;
-    let idx = 0;
-    const next = () => {
-      if (pageSpeakTokenRef.current !== token) return; // 已被取消
-      if (!Array.isArray(list) || idx >= list.length) return;
-      const item = list[idx++];
-      if (!item || !item.word) {
-        return next();
-      }
-      // 讲话一个
-      try {
-        const utter = new SpeechSynthesisUtterance(item.word);
-        utter.onend = () => setTimeout(next, 60);
-        utter.onerror = () => setTimeout(next, 60);
-        window.speechSynthesis.speak(utter);
-        // 异步生成缓存，提升后续点击体验
-        sendToWorker({ type: 'predict', word: item.word });
-      } catch {
-        setTimeout(next, 60);
+    const run = async () => {
+      // 等待 cancel 生效
+      await new Promise(r => setTimeout(r, 60));
+      for (let i = 0; i < (list?.length ?? 0); i++) {
+        if (pageSpeakTokenRef.current !== token) return;
+        const item = list[i];
+        if (!item || !item.word) continue;
+        await speakOnce(item.word);
+        if (pageSpeakTokenRef.current !== token) return;
+        await new Promise(r => setTimeout(r, 60));
       }
     };
-    // 给 cancel 一点时间生效
-    setTimeout(next, 60);
-  }, [sendToWorker]);
+    run();
+  }, [speakOnce]);
 
   // 添加J/K快捷键控制分页 + U 播放
   useEffect(() => {
