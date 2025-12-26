@@ -8,6 +8,15 @@ let isProcessing = false;
 let isModelLoaded = false;
 let currentVoiceId = 'en_US-hfc_female-medium';
 
+// 去重与节流
+const inFlight = new Set(); // 正在处理或排队中的 key 集合
+const lastRequestAt = new Map(); // key -> 时间戳
+const THROTTLE_MS = 1200; // 节流窗口，避免短时间重复生成
+
+function makeKey(word, voiceId) {
+  return `${(voiceId || currentVoiceId) || ''}::${(word || '').toLowerCase()}`;
+}
+
 self.onmessage = async (event) => {
   const { type, word, voiceId } = event.data;
   
@@ -31,9 +40,24 @@ self.onmessage = async (event) => {
       self.postMessage({ type: 'error', error: `获取语音模型列表失败: ${error.message}` });
     }
   } else if (type === 'predict') {
-    // 将任务添加到队列
-    taskQueue.push({ word, voiceId: voiceId || currentVoiceId });
-    
+    const key = makeKey(word, voiceId);
+    const now = Date.now();
+
+    // 节流：在窗口内忽略重复请求
+    const lastAt = lastRequestAt.get(key) || 0;
+    if (now - lastAt < THROTTLE_MS) {
+      return; // 丢弃被节流的请求
+    }
+
+    // 去重：若已在队列或处理中，忽略
+    if (inFlight.has(key)) {
+      return;
+    }
+
+    // 记录并入队
+    inFlight.add(key);
+    taskQueue.push({ word, voiceId: voiceId || currentVoiceId, key });
+
     // 如果没有正在处理的任务，开始处理队列
     if (!isProcessing) {
       await processQueue();
@@ -42,6 +66,7 @@ self.onmessage = async (event) => {
     // 取消所有排队的任务
     taskQueue.length = 0;
     isProcessing = false;
+    inFlight.clear();
   }
 };
 
@@ -106,6 +131,12 @@ async function processQueue() {
         word: task.word, 
         error: error.message
       });
+    } finally {
+      // 任务完成或失败后，移除去重标记并记录时间
+      if (task && task.key) {
+        inFlight.delete(task.key);
+        lastRequestAt.set(task.key, Date.now());
+      }
     }
   }
   

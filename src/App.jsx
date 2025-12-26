@@ -113,9 +113,9 @@ function App() {
 
         // 从数据库加载数据
         const data = await vocabDB.getAllData();
-        // 转换数据格式以匹配现有代码
-        const formattedData = data.map((item, index) => ({
-          id: index + 1,
+        // 使用数据库稳定的自增ID，避免顺序变化导致标记错位
+        const formattedData = data.map((item) => ({
+          id: item.id,
           word: item.name,
           definition: item.definition
         }));
