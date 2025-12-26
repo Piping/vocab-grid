@@ -18,6 +18,13 @@ function App() {
   const [gridColumnStart, setGridColumnStart] = useState(3);
   const [ttsVoice, setTtsVoice] = useState('en_US-hfc_female-medium');
   const [availableVoices, setAvailableVoices] = useState([]);
+  // 导入导出相关
+  const [mergeOnImport, setMergeOnImport] = useState(true);
+  const importFileInputRef = useRef(null);
+  // 释义展示与触摸双击
+  const [visibleDefs, setVisibleDefs] = useState({}); // { [id]: true }
+  const suppressNextClickRef = useRef(false);
+  const lastTapRef = useRef({ time: 0, x: 0, y: 0, id: null });
   
   // TTS Worker相关状态
   const [ttsWorker, setTtsWorker] = useState(null);
@@ -233,6 +240,10 @@ function App() {
 
   // 切换单词记忆状态
   const toggleRemember = (id) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
     setRememberedWords(prev => ({
       ...prev,
       [id]: !prev[id]
@@ -332,6 +343,19 @@ function App() {
     }
   };
 
+  // 切换单词释义显示
+  const toggleDefinition = useCallback((id) => {
+    setVisibleDefs(prev => {
+      const next = { ...prev };
+      if (next[id]) {
+        delete next[id];
+      } else {
+        next[id] = true;
+      }
+      return next;
+    });
+  }, []);
+
   // 组件卸载时清理缓存的音频URL
   useEffect(() => {
     return () => {
@@ -345,6 +369,80 @@ function App() {
       }
     };
   }, []);
+
+  // 导出记忆记录
+  const handleExportRemembered = useCallback(() => {
+    try {
+      const payload = {
+        type: 'vocab-grid-remembered',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        rememberedWords,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = url;
+      a.download = `vocab-grid-remembered-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('导出记忆记录失败:', err);
+      alert('导出失败，请重试');
+    }
+  }, [rememberedWords]);
+
+  // 导入记忆记录
+  const handleImportFileChange = useCallback(async (e) => {
+    const file = e.target.files && e.target.files[0];
+    // 允许重复选择同一文件
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // 兼容多种简单格式
+      let incoming = {};
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.type === 'vocab-grid-remembered') {
+          incoming = parsed.rememberedWords || parsed.data || {};
+        } else if (parsed.rememberedWords) {
+          incoming = parsed.rememberedWords;
+        } else {
+          incoming = parsed;
+        }
+      }
+
+      if (!incoming || typeof incoming !== 'object') {
+        alert('导入文件格式不正确');
+        return;
+      }
+
+      // 仅保留当前数据集存在的ID，键转换为数字
+      const validIds = new Set(words.map(w => Number(w.id)));
+      const filtered = {};
+      for (const [k, v] of Object.entries(incoming)) {
+        const idNum = Number(k);
+        if (Number.isInteger(idNum) && validIds.has(idNum)) {
+          filtered[idNum] = Boolean(v);
+        }
+      }
+
+      if (Object.keys(filtered).length === 0) {
+        alert('导入文件没有有效的记录（可能与当前词库不匹配）');
+        return;
+      }
+
+      setRememberedWords(prev => (mergeOnImport ? { ...prev, ...filtered } : filtered));
+      alert('导入成功');
+    } catch (err) {
+      console.error('导入记忆记录失败:', err);
+      alert('导入失败：文件解析错误');
+    }
+  }, [words, mergeOnImport]);
 
   // 获取可用的语音模型
   useEffect(() => {
@@ -433,10 +531,37 @@ function App() {
             >
               {availableVoices.map(voice => (
                 <option key={voice.id} value={voice.id}>
-                  {voice.id}
+                  {voice.name || voice.id}
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="settings-item">
+            <button className="page-nav-button" onClick={handleExportRemembered}>
+              导出记忆记录
+            </button>
+            <button
+              className="page-nav-button"
+              onClick={() => importFileInputRef.current && importFileInputRef.current.click()}
+            >
+              导入记忆记录
+            </button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+              <input
+                type="checkbox"
+                checked={mergeOnImport}
+                onChange={(e) => setMergeOnImport(e.target.checked)}
+              />
+              合并导入
+            </label>
+            <input
+              type="file"
+              accept="application/json"
+              ref={importFileInputRef}
+              style={{ display: 'none' }}
+              onChange={handleImportFileChange}
+            />
           </div>
         </div>
       </header>
@@ -462,12 +587,37 @@ function App() {
                 onMouseOver={() => {
                   startHoverTimer(word.id, word.word);
                 }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  toggleDefinition(word.id);
+                }}
+                onTouchEnd={(e) => {
+                  try {
+                    const touch = e.changedTouches && e.changedTouches[0];
+                    if (!touch) return;
+                    const now = Date.now();
+                    const last = lastTapRef.current;
+                    const dx = touch.clientX - (last.x || 0);
+                    const dy = touch.clientY - (last.y || 0);
+                    const dt = now - (last.time || 0);
+                    const dist = Math.hypot(dx, dy);
+                    if (last.id === word.id && dt < 300 && dist < 30) {
+                      suppressNextClickRef.current = true;
+                      toggleDefinition(word.id);
+                      lastTapRef.current = { time: 0, x: 0, y: 0, id: null };
+                    } else {
+                      lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, id: word.id };
+                    }
+                  } catch (err) {
+                    console.error('处理触摸事件失败:', err);
+                  }
+                }}
               >
                 <span className="word-text">{word.word}</span>
                 {rememberedWords[word.id] && (
                   <span className="remembered-badge">✓</span>
                 )}
-                {showDefinitions && (
+                {(showDefinitions || visibleDefs[word.id]) && (
                   <span className="word-definition">{word.definition}</span>
                 )}
               </div>
