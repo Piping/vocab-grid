@@ -228,6 +228,16 @@ function App() {
           if (currentPage > 1) {
             handlePageChange(currentPage - 1);
           }
+        } else if (e.key === 'i') {
+          e.preventDefault();
+          // 将当前页所有单词记忆状态取反（toggle）
+          setRememberedWords(prev => {
+            const updated = { ...prev };
+            currentWords.forEach(w => {
+              if (w && w.id != null) updated[w.id] = !prev[w.id];
+            });
+            return updated;
+          });
         }
       }
     };
@@ -236,7 +246,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentPage, totalPages, handlePageChange]);
+  }, [currentPage, totalPages, handlePageChange, currentWords]);
 
   // 切换单词记忆状态
   const toggleRemember = (id) => {
