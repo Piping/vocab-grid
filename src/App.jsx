@@ -63,11 +63,13 @@ function App() {
       } else if (type === 'voices-list') {
         // 处理获取到的语音模型列表
         console.log('获取到语音模型列表:', voices);
-        // 转换语音模型列表格式
-        const formattedVoices = voices.map(voice => ({
-          id: voice.key,
-          name: `${voice.name} (${voice.language})`
-        }));
+        // 转换语音模型列表格式：首字母大写，去掉括号及其内容
+        const formattedVoices = voices.map(voice => {
+          const raw = (voice && voice.name) ? String(voice.name) : String(voice?.key || '');
+          const noParen = raw.replace(/\s*\([^)]*\)\s*/g, '').trim();
+          const display = noParen ? noParen.charAt(0).toUpperCase() + noParen.slice(1) : String(voice?.key || '');
+          return { id: voice.key, name: display };
+        });
         setAvailableVoices(formattedVoices);
       } else if (type === 'success') {
         // 处理成功的TTS结果
@@ -572,7 +574,7 @@ function App() {
               id="ttsVoice"
               value={ttsVoice}
               onChange={(e) => setTtsVoice(e.target.value)}
-              className="settings-input"
+              className="settings-select"
             >
               {availableVoices.map(voice => (
                 <option key={voice.id} value={voice.id}>
