@@ -25,6 +25,8 @@ function App() {
   const [visibleDefs, setVisibleDefs] = useState({}); // { [id]: true }
   const suppressNextClickRef = useRef(false);
   const lastTapRef = useRef({ time: 0, x: 0, y: 0, id: null });
+  // 最近指向的单词（用于键盘 u 切换发音）
+  const lastPointerWordRef = useRef(null); // { id, word }
   
   // TTS Worker相关状态
   const [ttsWorker, setTtsWorker] = useState(null);
@@ -201,6 +203,10 @@ function App() {
     }
     
     setCurrentPage(page);
+    // 重置最近指向的发音对象
+    if (lastPointerWordRef) {
+      lastPointerWordRef.current = null;
+    }
     setHoverTimers(currentTimers => {
       // 清除所有定时器和超时
       Object.values(currentTimers).forEach(timers => {
@@ -238,6 +244,26 @@ function App() {
             });
             return updated;
           });
+        } else if (e.key === 'o') {
+          e.preventDefault();
+          // 全局切换是否显示单词释义
+          setShowDefinitions(prev => !prev);
+        } else if (e.key === 'u') {
+          e.preventDefault();
+          // 键盘切换当前单词的发音：有则停，无则启定时（立即播放）
+          // 优先使用最近指向的单词，否则使用当前页第一个
+          let target = lastPointerWordRef.current;
+          if (!target && currentWords.length > 0) {
+            target = { id: currentWords[0].id, word: currentWords[0].word };
+          }
+          if (target && target.id != null) {
+            if (hoverTimers[target.id]) {
+              window.speechSynthesis.cancel();
+              clearHoverTimer(target.id);
+            } else {
+              startHoverTimer(target.id, target.word);
+            }
+          }
         }
       }
     };
@@ -246,7 +272,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentPage, totalPages, handlePageChange, currentWords]);
+  }, [currentPage, totalPages, handlePageChange, currentWords, hoverTimers]);
 
   // 切换单词记忆状态
   const toggleRemember = (id) => {
@@ -479,6 +505,7 @@ function App() {
       <header className="app-header">
         <h1>Vocab Grid</h1>
         <p>点击单词卡片标记已记住的单词, 悬停卡片播放发音</p>
+        <p className="shortcut-hint">快捷键: j/k 翻页 · i 当前页切换记住 · o 切换释义显示 · u 切换当前词发音 · 右键/双击切换释义</p>
 
         <div className="settings-panel">
           <div className="settings-item">
@@ -595,6 +622,7 @@ function App() {
                   clearHoverTimer(word.id);
                 }}
                 onMouseOver={() => {
+                  lastPointerWordRef.current = { id: word.id, word: word.word };
                   startHoverTimer(word.id, word.word);
                 }}
                 onContextMenu={(e) => {
@@ -651,7 +679,7 @@ function App() {
                 onChange={(e) => {
                   const page = parseInt(e.target.value);
                   if (page >= 1 && page <= totalPages && !isNaN(page)) {
-                    setCurrentPage(page);
+                    handlePageChange(page);
                   }
                 }}
                 className="page-input"
