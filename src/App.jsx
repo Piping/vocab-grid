@@ -10,7 +10,7 @@ function App() {
   const [rememberedWords, setRememberedWords] = useState({});
   const [isModelDownloading, setIsModelDownloading] = useState(false);
   const [modelDownloaded, setModelDownloaded] = useState(false);
-  const [wordsPerPage, setWordsPerPage] = useState(5);
+  const [wordsPerPage, setWordsPerPage] = useState(1);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -545,7 +545,7 @@ function App() {
       <header className="app-header">
         <h1>Vocab Grid</h1>
         <p>点击单词卡片标记已记住的单词</p>
-        <p className="shortcut-hint">快捷键: j/k 翻页 · i 当前页切换记住 · o 切换释义显示 · u 播放当前（最近交互或当前页第一个） · 右键/双击切换释义</p>
+        <p className="shortcut-hint">快捷键: j/k 翻页 · i 当前页切换记住 · o 切换释义显示 · u 发音当前页 · 右键/双击切换释义</p>
 
         <div className="settings-panel">
           <div className="settings-item">
