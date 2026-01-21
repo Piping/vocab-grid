@@ -1,292 +1,173 @@
-:root {
-  --primary-color: #3b82f6;
-  --secondary-color: #10b981;
-  --background-color: #f8fafc;
-  --card-color: #ffffff;
-  --text-color: #1e293b;
-  --remembered-color: #dcfce7;
-  --badge-color: #10b981;
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-* {
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--ui-color-bg) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--ui-color-border);
+}
+
+.app-topbar__inner {
+  padding: var(--ui-space-6) 0 var(--ui-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-4);
+}
+
+.app-brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+}
+
+.app-title {
   margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+  font-family: var(--ui-font-serif);
+  font-size: var(--ui-font-size-38);
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
-body, html {
-  height: 100%;
-  width: 100%;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: var(--background-color);
-  color: var(--text-color);
+.app-subtitle {
+  margin: 0;
+  color: var(--ui-color-text-muted);
+  font-size: var(--ui-font-size-14);
 }
 
-#root {
-  height: 100%;
-  width: 100%;
+.app-topbar__meta {
   display: flex;
-  flex-direction: column;
-}
-
-.app-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  padding: 1rem;
-}
-
-.app-header {
-  text-align: center;
-  padding: 1rem;
-  margin-bottom: 1rem;
-}
-
-.app-header h1 {
-  color: var(--primary-color);
-  margin-bottom: 0.5rem;
-}
-
-.shortcut-hint {
-  margin-top: 0.25rem;
-  font-size: 0.9rem;
-  color: #64748b; /* slate-500 */
-}
-
-.settings-panel {
-  display: flex;
-  justify-content: center;
-  gap: 2rem;
-  margin-top: 1rem;
   flex-wrap: wrap;
-}
-
-.settings-item {
-  display: flex;
+  gap: var(--ui-space-3);
   align-items: center;
-  gap: 0.5rem;
 }
 
-.settings-select {
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--primary-color);
-  border-radius: 4px;
-  background-color: white;
-  color: var(--text-color);
-  width: 100px;
+.app-main {
+  flex: 1;
+  padding: var(--ui-space-6) 0;
 }
 
-.settings-input {
-  padding: 0.3rem 0.5rem;
-  border: 1px solid var(--primary-color);
-  border-radius: 4px;
-  background-color: white;
-  color: var(--text-color);
-  width: 60px;
+.app-settings {
+  margin-bottom: var(--ui-space-5);
 }
 
-.word-definition {
-  margin-top: 0.5rem;
-  font-size: 0.9rem;
-  color: var(--text-color);
-  max-width: 100%;
-  overflow-wrap: break-word;
-  padding: 0 0.5rem;
-}
-
-.words-grid {
-  /* 改为弹性布局，自动居中单张/多张卡片 */
+.app-settings__row {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  padding: 1rem;
-  overflow-y: auto;
-  flex-grow: 1;
-  justify-content: center;
-  align-content: flex-start;
+  gap: var(--ui-space-4);
+  align-items: flex-end;
+}
+
+.app-field--compact {
+  min-width: 180px;
+}
+
+.app-input--xs {
+  max-width: 140px;
+}
+
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--ui-space-4);
+  align-items: stretch;
 }
 
 .word-card {
-  background-color: var(--card-color);
-  border-radius: 8px;
-  padding: 1.5rem;
-  text-align: center;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  cursor: pointer;
-  transition: all 0.3s ease;
   position: relative;
-  height: 500px; /* 固定卡片高度 */
-  overflow-y: auto; /* 内容过长时内部滚动 */
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--ui-duration-base) var(--ui-ease),
+    box-shadow var(--ui-duration-base) var(--ui-ease),
+    border-color var(--ui-duration-base) var(--ui-ease),
+    background-color var(--ui-duration-base) var(--ui-ease);
+  min-height: 180px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  align-items: center;
-  /* 固定卡片宽度，配合 flex 居中 */
-  width: 250px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-5);
 }
 
 .word-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--ui-shadow-md);
+  transform: translateY(-2px);
 }
 
 .word-card.remembered {
-  background-color: var(--remembered-color);
-  border: 2px solid var(--badge-color);
+  border-color: rgba(37, 165, 90, 0.45);
+  background: color-mix(in srgb, rgba(37, 165, 90, 0.08) 60%, var(--ui-color-surface));
+}
+
+.word-card__top {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ui-space-3);
 }
 
 .word-text {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: var(--text-color);
+  font-size: var(--ui-font-size-22);
+  line-height: var(--ui-line-height-tight);
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
 
-.remembered-badge {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  background-color: var(--badge-color);
-  color: white;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-weight: bold;
-}
-
-/* 小喇叭播放按钮 */
-.word-speak-btn {
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  background: transparent;
-  border: none;
-  color: #64748b; /* slate-500 */
-  font-size: 1.1rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px;
-}
-.word-speak-btn:hover {
-  color: var(--primary-color);
-}
-.word-speak-btn:focus {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-.pagination-controls {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem;
+.word-definition {
   width: 100%;
-  overflow: hidden;
+  color: var(--ui-color-text-muted);
+  font-size: var(--ui-font-size-14);
+  line-height: var(--ui-line-height-relaxed);
+  overflow-wrap: anywhere;
+  max-height: 9em;
+  overflow: auto;
+  padding-right: var(--ui-space-1);
 }
 
-.page-nav-button {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--primary-color);
-  background-color: white;
-  color: var(--primary-color);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.3s ease;
+.app-icon-btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--ui-radius-sm);
 }
 
-.page-nav-button:hover:not(:disabled) {
-  background-color: var(--primary-color);
-  color: white;
+.app-footer {
+  border-top: 1px solid var(--ui-color-border);
+  background: var(--ui-color-bg);
 }
 
-.page-nav-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.page-input-container {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.page-input {
-  width: 60px;
-  padding: 0.5rem;
-  border: 1px solid var(--primary-color);
-  border-radius: 4px;
-  text-align: center;
-}
-
-.page-total {
-  color: var(--text-color);
-}
-
-.page-button {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--primary-color);
-  background-color: white;
-  color: var(--primary-color);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.page-button:hover {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.page-button.active {
-  background-color: var(--primary-color);
-  color: white;
-  font-weight: bold;
-}
-
-.loading {
+.app-footer__inner {
+  padding: var(--ui-space-5) 0;
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 50vh;
-  font-size: 1.2rem;
-  color: var(--text-color);
+  flex-wrap: wrap;
+  gap: var(--ui-space-3);
 }
 
-.error {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 50vh;
-  font-size: 1.2rem;
-  color: #dc2626;
-  padding: 1rem;
+.app-page-input {
+  width: 96px;
   text-align: center;
 }
 
-@media (max-width: 768px) {
-  .word-card {
-    width: 150px;
-  }
-  .word-text {
-    font-size: 1.2rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .word-card {
-    width: 120px;
-  }
-  .app-header h1 {
-    font-size: 1.5rem;
+@media (min-width: 768px) {
+  .app-topbar__inner {
+    padding: var(--ui-space-7) 0 var(--ui-space-5);
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--ui-space-6);
   }
 
-  .page-button {
-    padding: 0.3rem 0.6rem;
-    font-size: 0.8rem;
+  .app-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--ui-space-5);
   }
 }

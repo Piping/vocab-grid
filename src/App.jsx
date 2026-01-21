@@ -8,15 +8,14 @@ function App() {
   const [words, setWords] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [rememberedWords, setRememberedWords] = useState({});
-  const [isModelDownloading, setIsModelDownloading] = useState(false);
-  const [modelDownloaded, setModelDownloaded] = useState(false);
-  const [wordsPerPage, setWordsPerPage] = useState(1);
+  const [wordsPerPage, setWordsPerPage] = useState(5);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // 已移除手动 grid-column-start 设置，改为自动居中布局
   const [ttsVoice, setTtsVoice] = useState('en_US-hfc_female-medium');
   const [availableVoices, setAvailableVoices] = useState([]);
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   // 导入导出相关
   const [mergeOnImport, setMergeOnImport] = useState(true);
   const importFileInputRef = useRef(null);
@@ -49,8 +48,6 @@ function App() {
       
       if (type === 'worker-ready') {
         setIsWorkerReady(true);
-        // 发送当前选择的语音模型给Worker
-        worker.postMessage({ type: 'set-voice', voiceId: ttsVoice });
         // 处理队列中的消息
         while (workerMessageQueue.current.length > 0) {
           const message = workerMessageQueue.current.shift();
@@ -186,9 +183,21 @@ function App() {
           audioRef.current.pause();
           audioRef.current.src = '';
         }
-      } catch {}
+      } catch (err) {
+        void err;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.setAttribute('data-theme', 'dark');
+    } else {
+      root.removeAttribute('data-theme');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
 
   // 计算总页数，确保至少为1
   const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage));
@@ -215,7 +224,9 @@ function App() {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
       }
-    } catch {}
+    } catch (err) {
+      void err;
+    }
     // 重置当前激活单词
     if (lastActiveWordRef) {
       lastActiveWordRef.current = null;
@@ -311,10 +322,18 @@ function App() {
   const playPronunciation = useCallback(async (word) => {
     try {
       // 全面取消：系统TTS、顺序朗读、Worker 队列、当前 Audio
-      try { window.speechSynthesis.cancel(); } catch {}
+      try {
+        window.speechSynthesis.cancel();
+      } catch (err) {
+        void err;
+      }
       pageSpeakTokenRef.current = 0;
       if (ttsWorker && isWorkerReady) {
-        try { ttsWorker.postMessage({ type: 'cancel' }); } catch {}
+        try {
+          ttsWorker.postMessage({ type: 'cancel' });
+        } catch (err) {
+          void err;
+        }
       }
       if (audioRef.current) {
         audioRef.current.pause();
@@ -541,208 +560,262 @@ function App() {
   }, [alwaysSpeakOnPage, currentWords, loading, error, startSequentialSpeak, isWorkerReady, ttsWorker]);
 
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <h1>Vocab Grid</h1>
-        <p>点击单词卡片标记已记住的单词</p>
-        <p className="shortcut-hint">快捷键: j/k 翻页 · i 当前页切换记住 · o 切换释义显示 · u 发音当前页 · 右键/双击切换释义</p>
-
-        <div className="settings-panel">
-          <div className="settings-item">
-            <label htmlFor="wordsPerPage">每页显示单词数 (1-100):</label>
-            <input
-              type="number"
-              id="wordsPerPage"
-              value={wordsPerPage}
-              min="1"
-              max="100"
-              onChange={(e) => {
-                let value = parseInt(e.target.value);
-                if (isNaN(value) || value < 1) {
-                  value = 1;
-                } else if (value > 100) {
-                  value = 100;
-                }
-                setWordsPerPage(value);
-              }}
-              className="settings-input"
-            />
+    <div className="app-shell">
+      <header className="app-topbar">
+        <div className="ui-container app-topbar__inner">
+          <div className="app-brand">
+            <h1 className="app-title">Vocab Grid</h1>
+            <p className="app-subtitle">点击卡片标记记忆；右键/双击切换释义；J/K 翻页</p>
           </div>
-
-          {/* 移除 grid-column-start 设置项 */}
-
-          <div className="settings-item">
-            <label htmlFor="showDefinitions">
-              <input
-                type="checkbox"
-                id="showDefinitions"
-                checked={showDefinitions}
-                onChange={(e) => setShowDefinitions(e.target.checked)}
-              />
-              总是显示单词释义
-            </label>
-          </div>
-
-          <div className="settings-item">
-            <label htmlFor="alwaysSpeakOnPage">
-              <input
-                type="checkbox"
-                id="alwaysSpeakOnPage"
-                checked={alwaysSpeakOnPage}
-                onChange={(e) => setAlwaysSpeakOnPage(e.target.checked)}
-              />
-              翻页顺序发音当前页
-            </label>
-          </div>
-
-          <div className="settings-item">
-            <label htmlFor="ttsVoice">TTS语音模型:</label>
-            <select
-              id="ttsVoice"
-              value={ttsVoice}
-              onChange={(e) => setTtsVoice(e.target.value)}
-              className="settings-select"
-            >
-              {availableVoices.map(voice => (
-                <option key={voice.id} value={voice.id}>
-                  {voice.name || voice.id}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="settings-item">
-            <button className="page-nav-button" onClick={handleExportRemembered}>
-              导出记忆记录
-            </button>
+          <div className="app-topbar__meta">
+            <span className="ui-badge ui-badge--muted">共 {words.length} 词</span>
+            <span className="ui-badge ui-badge--success">
+              已记住 {Object.values(rememberedWords).filter(Boolean).length}
+            </span>
             <button
-              className="page-nav-button"
-              onClick={() => importFileInputRef.current && importFileInputRef.current.click()}
+              type="button"
+              className="ui-btn ui-btn--secondary"
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
             >
-              导入记忆记录
+              {theme === 'dark' ? '浅色主题' : '深色主题'}
             </button>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <input
-                type="checkbox"
-                checked={mergeOnImport}
-                onChange={(e) => setMergeOnImport(e.target.checked)}
-              />
-              合并导入
-            </label>
-            <input
-              type="file"
-              accept="application/json"
-              ref={importFileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleImportFileChange}
-            />
           </div>
         </div>
       </header>
 
-      {loading ? (
-        <div className="loading">加载单词数据中...</div>
-      ) : error ? (
-        <div className="error">{error}</div>
-      ) : (
-        <>
-          <main className="words-grid">
-            {currentWords.map(word => (
-              <div
-                key={word.id}
-                className={`word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
-                onClick={() => {
-                  lastActiveWordRef.current = { id: word.id, word: word.word };
-                  toggleRemember(word.id);
-                }}
-                title={showDefinitions ? undefined : `${word.definition}`}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  lastActiveWordRef.current = { id: word.id, word: word.word };
-                  toggleDefinition(word.id);
-                }}
-                onTouchEnd={(e) => {
-                  try {
-                    const touch = e.changedTouches && e.changedTouches[0];
-                    if (!touch) return;
-                    const now = Date.now();
-                    const last = lastTapRef.current;
-                    const dx = touch.clientX - (last.x || 0);
-                    const dy = touch.clientY - (last.y || 0);
-                    const dt = now - (last.time || 0);
-                    const dist = Math.hypot(dx, dy);
-                    if (last.id === word.id && dt < 300 && dist < 30) {
-                      suppressNextClickRef.current = true;
+      <main className="app-main">
+        <div className="ui-container ui-stack">
+          <section className="ui-card app-settings" aria-label="settings">
+            <div className="ui-stack">
+              <div className="app-settings__row">
+                <div className="ui-field app-field--compact">
+                  <label className="ui-label" htmlFor="wordsPerPage">
+                    每页单词数
+                  </label>
+                  <input
+                    type="number"
+                    id="wordsPerPage"
+                    value={wordsPerPage}
+                    min="1"
+                    max="100"
+                    onChange={(e) => {
+                      let value = parseInt(e.target.value);
+                      if (isNaN(value) || value < 1) {
+                        value = 1;
+                      } else if (value > 100) {
+                        value = 100;
+                      }
+                      setWordsPerPage(value);
+                    }}
+                    className="ui-input app-input--xs"
+                  />
+                  <div className="ui-hint">范围 1–100</div>
+                </div>
+
+                <div className="ui-field app-field--compact">
+                  <label className="ui-label" htmlFor="ttsVoice">
+                    TTS 语音模型
+                  </label>
+                  <select
+                    id="ttsVoice"
+                    value={ttsVoice}
+                    onChange={(e) => setTtsVoice(e.target.value)}
+                    className="ui-select"
+                  >
+                    {availableVoices.length > 0 ? (
+                      availableVoices.map((voice) => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.name || voice.id}
+                        </option>
+                      ))
+                    ) : (
+                      <option value={ttsVoice} disabled>
+                        加载中…
+                      </option>
+                    )}
+                  </select>
+                  <div className="ui-hint">{isWorkerReady ? '已就绪' : '初始化中…'}</div>
+                </div>
+
+                <label className="ui-check" htmlFor="showDefinitions">
+                  <input
+                    type="checkbox"
+                    id="showDefinitions"
+                    className="ui-check__input"
+                    checked={showDefinitions}
+                    onChange={(e) => setShowDefinitions(e.target.checked)}
+                  />
+                  <span className="ui-label">总是显示释义</span>
+                </label>
+
+                <label className="ui-check" htmlFor="alwaysSpeakOnPage">
+                  <input
+                    type="checkbox"
+                    id="alwaysSpeakOnPage"
+                    className="ui-check__input"
+                    checked={alwaysSpeakOnPage}
+                    onChange={(e) => setAlwaysSpeakOnPage(e.target.checked)}
+                  />
+                  <span className="ui-label">翻页顺序发音</span>
+                </label>
+              </div>
+
+              <div className="app-settings__row">
+                <button className="ui-btn ui-btn--secondary" type="button" onClick={handleExportRemembered}>
+                  导出记忆记录
+                </button>
+                <button
+                  className="ui-btn ui-btn--secondary"
+                  type="button"
+                  onClick={() => importFileInputRef.current && importFileInputRef.current.click()}
+                >
+                  导入记忆记录
+                </button>
+                <label className="ui-check">
+                  <input
+                    type="checkbox"
+                    className="ui-check__input"
+                    checked={mergeOnImport}
+                    onChange={(e) => setMergeOnImport(e.target.checked)}
+                  />
+                  <span className="ui-label">合并导入</span>
+                </label>
+                <input
+                  type="file"
+                  accept="application/json"
+                  ref={importFileInputRef}
+                  style={{ display: 'none' }}
+                  onChange={handleImportFileChange}
+                />
+              </div>
+
+              <div className="ui-alert">
+                <div className="ui-cluster">
+                  <span className="ui-badge">快捷键</span>
+                  <span className="ui-hint">
+                    j/k 翻页 · i 当前页切换记住 · o 切换释义 · u 发音最近交互 · 右键/双击切换释义
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {loading ? (
+            <section className="ui-empty" aria-label="loading">
+              <h2 className="ui-empty__title">加载中</h2>
+              <p className="ui-empty__desc">正在从本地数据库读取单词数据…</p>
+            </section>
+          ) : error ? (
+            <section className="ui-alert ui-alert--danger" aria-label="error">
+              {error}
+            </section>
+          ) : (
+            <>
+              <section className="app-grid" aria-label="words">
+                {currentWords.map((word) => (
+                  <div
+                    key={word.id}
+                    className={`ui-card word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
+                    onClick={() => {
+                      lastActiveWordRef.current = { id: word.id, word: word.word };
+                      toggleRemember(word.id);
+                    }}
+                    title={showDefinitions ? undefined : `${word.definition}`}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
                       lastActiveWordRef.current = { id: word.id, word: word.word };
                       toggleDefinition(word.id);
-                      lastTapRef.current = { time: 0, x: 0, y: 0, id: null };
-                    } else {
-                      lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, id: word.id };
-                      lastActiveWordRef.current = { id: word.id, word: word.word };
-                    }
-                  } catch (err) {
-                    console.error('处理触摸事件失败:', err);
-                  }
-                }}
-              >
-                <button
-                  className="word-speak-btn"
-                  type="button"
-                  aria-label="播放发音"
-                  title="播放发音"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    lastActiveWordRef.current = { id: word.id, word: word.word };
-                    playPronunciation(word.word);
-                  }}
-                >
-                  🔊
-                </button>
-                <span className="word-text">{word.word}</span>
-                {rememberedWords[word.id] && (
-                  <span className="remembered-badge">✓</span>
-                )}
-                {(showDefinitions || visibleDefs[word.id]) && (
-                  <span className="word-definition">{word.definition}</span>
-                )}
-              </div>
-            ))}
-          </main>
+                    }}
+                    onTouchEnd={(e) => {
+                      try {
+                        const touch = e.changedTouches && e.changedTouches[0];
+                        if (!touch) return;
+                        const now = Date.now();
+                        const last = lastTapRef.current;
+                        const dx = touch.clientX - (last.x || 0);
+                        const dy = touch.clientY - (last.y || 0);
+                        const dt = now - (last.time || 0);
+                        const dist = Math.hypot(dx, dy);
+                        if (last.id === word.id && dt < 300 && dist < 30) {
+                          suppressNextClickRef.current = true;
+                          lastActiveWordRef.current = { id: word.id, word: word.word };
+                          toggleDefinition(word.id);
+                          lastTapRef.current = { time: 0, x: 0, y: 0, id: null };
+                        } else {
+                          lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, id: word.id };
+                          lastActiveWordRef.current = { id: word.id, word: word.word };
+                        }
+                      } catch (err) {
+                        console.error('处理触摸事件失败:', err);
+                      }
+                    }}
+                  >
+                    <div className="word-card__top">
+                      <span className="word-text">{word.word}</span>
+                      <div className="ui-cluster">
+                        <button
+                          className="ui-btn ui-btn--ghost app-icon-btn"
+                          type="button"
+                          aria-label="播放发音"
+                          title="播放发音"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            lastActiveWordRef.current = { id: word.id, word: word.word };
+                            playPronunciation(word.word);
+                          }}
+                        >
+                          🔊
+                        </button>
+                        {rememberedWords[word.id] && <span className="ui-badge ui-badge--success">✓</span>}
+                      </div>
+                    </div>
 
-          <footer className="pagination-controls">
-            <button
-              className="page-nav-button"
-              onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-            >
-              上一页
-            </button>
-            <div className="page-input-container">
-              <input
-                type="number"
-                min="1"
-                max={totalPages}
-                value={currentPage}
-                onChange={(e) => {
-                  const page = parseInt(e.target.value);
-                  if (page >= 1 && page <= totalPages && !isNaN(page)) {
-                    handlePageChange(page);
-                  }
-                }}
-                className="page-input"
-              />
-              <span className="page-total">/ {totalPages}</span>
-            </div>
-            <button
-              className="page-nav-button"
-              onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
-              disabled={currentPage === totalPages}
-            >
-              下一页
-            </button>
-          </footer>
-        </>
-      )}
+                    {(showDefinitions || visibleDefs[word.id]) && (
+                      <div className="word-definition">{word.definition}</div>
+                    )}
+                  </div>
+                ))}
+              </section>
+
+              <footer className="app-footer" aria-label="pagination">
+                <div className="ui-container app-footer__inner">
+                  <button
+                    className="ui-btn ui-btn--secondary"
+                    type="button"
+                    onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    上一页
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    value={currentPage}
+                    onChange={(e) => {
+                      const page = parseInt(e.target.value);
+                      if (page >= 1 && page <= totalPages && !isNaN(page)) {
+                        handlePageChange(page);
+                      }
+                    }}
+                    className="ui-input app-page-input"
+                    aria-label="当前页"
+                  />
+                  <span className="ui-badge ui-badge--muted">/ {totalPages}</span>
+                  <button
+                    className="ui-btn ui-btn--secondary"
+                    type="button"
+                    onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </footer>
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
