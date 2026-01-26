@@ -4,13 +4,19 @@
   flex-direction: column;
 }
 
-.app-topbar {
+.app-nav {
   position: sticky;
   top: 0;
   z-index: 10;
   background: color-mix(in srgb, var(--ui-color-bg) 92%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--ui-color-border);
+}
+
+.app-topbar {
+  background: transparent;
+  backdrop-filter: none;
+  border-bottom: 0;
 }
 
 .app-topbar__inner {
@@ -52,8 +58,82 @@
   padding: var(--ui-space-6) 0;
 }
 
-.app-settings {
-  margin-bottom: var(--ui-space-5);
+.app-toolbar {
+  border-top: 1px solid var(--ui-color-border);
+}
+
+.app-toolbar__inner {
+  padding: var(--ui-space-3) 0 var(--ui-space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-3);
+  align-items: center;
+}
+
+.app-toolbar__control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-height: 42px;
+  padding: 0 var(--ui-space-2);
+  border-radius: var(--ui-radius-sm);
+}
+
+.app-toolbar__control:hover {
+  background: rgba(17, 109, 255, 0.06);
+}
+
+.app-toolbar__control-label {
+  font-size: var(--ui-font-size-12);
+  color: var(--ui-color-text-muted);
+}
+
+.app-toolbar__input {
+  width: 110px;
+  max-width: 110px;
+  padding: 8px var(--ui-space-3);
+  font-size: var(--ui-font-size-14);
+}
+
+.app-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-space-3);
+  align-items: center;
+}
+
+.app-toolbar__more {
+  margin-left: auto;
+}
+
+.app-toolbar__more[open] {
+  flex-basis: 100%;
+  margin-left: 0;
+}
+
+.app-toolbar__more-summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  padding: 0 var(--ui-space-4);
+  border-radius: var(--ui-radius-sm);
+  user-select: none;
+}
+
+.app-toolbar__more-summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-toolbar__more-summary:hover {
+  background: rgba(17, 109, 255, 0.06);
+}
+
+.app-toolbar__more-panel {
+  margin-top: var(--ui-space-3);
+  padding: var(--ui-space-4);
 }
 
 .app-settings__row {
@@ -73,7 +153,7 @@
 
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--ui-space-4);
   align-items: stretch;
 }
@@ -86,7 +166,7 @@
     box-shadow var(--ui-duration-base) var(--ui-ease),
     border-color var(--ui-duration-base) var(--ui-ease),
     background-color var(--ui-duration-base) var(--ui-ease);
-  min-height: 180px;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -167,7 +247,7 @@
   }
 
   .app-grid {
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: var(--ui-space-5);
   }
 }

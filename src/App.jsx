@@ -561,145 +561,154 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-topbar">
-        <div className="ui-container app-topbar__inner">
-          <div className="app-brand">
-            <h1 className="app-title">Vocab Grid</h1>
-            <p className="app-subtitle">点击卡片标记记忆；右键/双击切换释义；J/K 翻页</p>
+      <div className="app-nav">
+        <header className="app-topbar">
+          <div className="ui-container app-topbar__inner">
+            <div className="app-brand">
+              <h1 className="app-title">Vocab Grid</h1>
+              <p className="app-subtitle">点击卡片标记记忆；右键/双击切换释义；J/K 翻页</p>
+            </div>
+            <div className="app-topbar__meta">
+              <span className="ui-badge ui-badge--muted">共 {words.length} 词</span>
+              <span className="ui-badge ui-badge--success">
+                已记住 {Object.values(rememberedWords).filter(Boolean).length}
+              </span>
+              <button
+                type="button"
+                className="ui-btn ui-btn--secondary"
+                onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              >
+                {theme === 'dark' ? '浅色主题' : '深色主题'}
+              </button>
+            </div>
           </div>
-          <div className="app-topbar__meta">
-            <span className="ui-badge ui-badge--muted">共 {words.length} 词</span>
-            <span className="ui-badge ui-badge--success">
-              已记住 {Object.values(rememberedWords).filter(Boolean).length}
-            </span>
-            <button
-              type="button"
-              className="ui-btn ui-btn--secondary"
-              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
-            >
-              {theme === 'dark' ? '浅色主题' : '深色主题'}
-            </button>
+        </header>
+
+        <div className="app-toolbar" aria-label="toolbar">
+          <div className="ui-container app-toolbar__inner">
+            <label className="app-toolbar__control" htmlFor="wordsPerPage">
+              <span className="app-toolbar__control-label">每页单词数</span>
+              <input
+                type="number"
+                id="wordsPerPage"
+                value={wordsPerPage}
+                min="1"
+                max="100"
+                onChange={(e) => {
+                  let value = parseInt(e.target.value);
+                  if (isNaN(value) || value < 1) {
+                    value = 1;
+                  } else if (value > 100) {
+                    value = 100;
+                  }
+                  setWordsPerPage(value);
+                }}
+                className="ui-input app-toolbar__input"
+              />
+            </label>
+
+            <label className="ui-check" htmlFor="alwaysSpeakOnPage">
+              <input
+                type="checkbox"
+                id="alwaysSpeakOnPage"
+                className="ui-check__input"
+                checked={alwaysSpeakOnPage}
+                onChange={(e) => setAlwaysSpeakOnPage(e.target.checked)}
+              />
+              <span className="ui-label">翻页顺序发音</span>
+            </label>
+
+            <div className="app-toolbar__actions">
+              <button className="ui-btn ui-btn--secondary" type="button" onClick={handleExportRemembered}>
+                导出记忆
+              </button>
+              <button
+                className="ui-btn ui-btn--secondary"
+                type="button"
+                onClick={() => importFileInputRef.current && importFileInputRef.current.click()}
+              >
+                导入记忆
+              </button>
+              <input
+                type="file"
+                accept="application/json"
+                ref={importFileInputRef}
+                style={{ display: 'none' }}
+                onChange={handleImportFileChange}
+              />
+            </div>
+
+            <details className="app-toolbar__more">
+              <summary className="app-toolbar__more-summary">更多设置</summary>
+              <div className="ui-card app-toolbar__more-panel">
+                <div className="ui-stack">
+                  <div className="app-settings__row">
+                    <div className="ui-field app-field--compact">
+                      <label className="ui-label" htmlFor="ttsVoice">
+                        TTS 语音模型
+                      </label>
+                      <select
+                        id="ttsVoice"
+                        value={ttsVoice}
+                        onChange={(e) => setTtsVoice(e.target.value)}
+                        className="ui-select"
+                      >
+                        {availableVoices.length > 0 ? (
+                          availableVoices.map((voice) => (
+                            <option key={voice.id} value={voice.id}>
+                              {voice.name || voice.id}
+                            </option>
+                          ))
+                        ) : (
+                          <option value={ttsVoice} disabled>
+                            加载中…
+                          </option>
+                        )}
+                      </select>
+                      <div className="ui-hint">{isWorkerReady ? '已就绪' : '初始化中…'}</div>
+                    </div>
+
+                    <label className="ui-check" htmlFor="showDefinitions">
+                      <input
+                        type="checkbox"
+                        id="showDefinitions"
+                        className="ui-check__input"
+                        checked={showDefinitions}
+                        onChange={(e) => setShowDefinitions(e.target.checked)}
+                      />
+                      <span className="ui-label">总是显示释义</span>
+                    </label>
+                  </div>
+
+                  <div className="app-settings__row">
+                    <label className="ui-check">
+                      <input
+                        type="checkbox"
+                        className="ui-check__input"
+                        checked={mergeOnImport}
+                        onChange={(e) => setMergeOnImport(e.target.checked)}
+                      />
+                      <span className="ui-label">合并导入</span>
+                    </label>
+                  </div>
+
+                  <div className="ui-alert">
+                    <div className="ui-cluster">
+                      <span className="ui-badge">快捷键</span>
+                      <span className="ui-hint">
+                        j/k 翻页 · i 当前页切换记住 · o 切换释义 · u 发音最近交互 · 右键/双击切换释义
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </details>
           </div>
         </div>
-      </header>
+      </div>
 
       <main className="app-main">
-        <div className="ui-container ui-stack">
-          <section className="ui-card app-settings" aria-label="settings">
-            <div className="ui-stack">
-              <div className="app-settings__row">
-                <div className="ui-field app-field--compact">
-                  <label className="ui-label" htmlFor="wordsPerPage">
-                    每页单词数
-                  </label>
-                  <input
-                    type="number"
-                    id="wordsPerPage"
-                    value={wordsPerPage}
-                    min="1"
-                    max="100"
-                    onChange={(e) => {
-                      let value = parseInt(e.target.value);
-                      if (isNaN(value) || value < 1) {
-                        value = 1;
-                      } else if (value > 100) {
-                        value = 100;
-                      }
-                      setWordsPerPage(value);
-                    }}
-                    className="ui-input app-input--xs"
-                  />
-                  <div className="ui-hint">范围 1–100</div>
-                </div>
-
-                <div className="ui-field app-field--compact">
-                  <label className="ui-label" htmlFor="ttsVoice">
-                    TTS 语音模型
-                  </label>
-                  <select
-                    id="ttsVoice"
-                    value={ttsVoice}
-                    onChange={(e) => setTtsVoice(e.target.value)}
-                    className="ui-select"
-                  >
-                    {availableVoices.length > 0 ? (
-                      availableVoices.map((voice) => (
-                        <option key={voice.id} value={voice.id}>
-                          {voice.name || voice.id}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={ttsVoice} disabled>
-                        加载中…
-                      </option>
-                    )}
-                  </select>
-                  <div className="ui-hint">{isWorkerReady ? '已就绪' : '初始化中…'}</div>
-                </div>
-
-                <label className="ui-check" htmlFor="showDefinitions">
-                  <input
-                    type="checkbox"
-                    id="showDefinitions"
-                    className="ui-check__input"
-                    checked={showDefinitions}
-                    onChange={(e) => setShowDefinitions(e.target.checked)}
-                  />
-                  <span className="ui-label">总是显示释义</span>
-                </label>
-
-                <label className="ui-check" htmlFor="alwaysSpeakOnPage">
-                  <input
-                    type="checkbox"
-                    id="alwaysSpeakOnPage"
-                    className="ui-check__input"
-                    checked={alwaysSpeakOnPage}
-                    onChange={(e) => setAlwaysSpeakOnPage(e.target.checked)}
-                  />
-                  <span className="ui-label">翻页顺序发音</span>
-                </label>
-              </div>
-
-              <div className="app-settings__row">
-                <button className="ui-btn ui-btn--secondary" type="button" onClick={handleExportRemembered}>
-                  导出记忆记录
-                </button>
-                <button
-                  className="ui-btn ui-btn--secondary"
-                  type="button"
-                  onClick={() => importFileInputRef.current && importFileInputRef.current.click()}
-                >
-                  导入记忆记录
-                </button>
-                <label className="ui-check">
-                  <input
-                    type="checkbox"
-                    className="ui-check__input"
-                    checked={mergeOnImport}
-                    onChange={(e) => setMergeOnImport(e.target.checked)}
-                  />
-                  <span className="ui-label">合并导入</span>
-                </label>
-                <input
-                  type="file"
-                  accept="application/json"
-                  ref={importFileInputRef}
-                  style={{ display: 'none' }}
-                  onChange={handleImportFileChange}
-                />
-              </div>
-
-              <div className="ui-alert">
-                <div className="ui-cluster">
-                  <span className="ui-badge">快捷键</span>
-                  <span className="ui-hint">
-                    j/k 翻页 · i 当前页切换记住 · o 切换释义 · u 发音最近交互 · 右键/双击切换释义
-                  </span>
-                </div>
-              </div>
-            </div>
-          </section>
-
+        <div className="ui-container">
           {loading ? (
             <section className="ui-empty" aria-label="loading">
               <h2 className="ui-empty__title">加载中</h2>
@@ -710,111 +719,111 @@ function App() {
               {error}
             </section>
           ) : (
-            <>
-              <section className="app-grid" aria-label="words">
-                {currentWords.map((word) => (
-                  <div
-                    key={word.id}
-                    className={`ui-card word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
-                    onClick={() => {
-                      lastActiveWordRef.current = { id: word.id, word: word.word };
-                      toggleRemember(word.id);
-                    }}
-                    title={showDefinitions ? undefined : `${word.definition}`}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      lastActiveWordRef.current = { id: word.id, word: word.word };
-                      toggleDefinition(word.id);
-                    }}
-                    onTouchEnd={(e) => {
-                      try {
-                        const touch = e.changedTouches && e.changedTouches[0];
-                        if (!touch) return;
-                        const now = Date.now();
-                        const last = lastTapRef.current;
-                        const dx = touch.clientX - (last.x || 0);
-                        const dy = touch.clientY - (last.y || 0);
-                        const dt = now - (last.time || 0);
-                        const dist = Math.hypot(dx, dy);
-                        if (last.id === word.id && dt < 300 && dist < 30) {
-                          suppressNextClickRef.current = true;
-                          lastActiveWordRef.current = { id: word.id, word: word.word };
-                          toggleDefinition(word.id);
-                          lastTapRef.current = { time: 0, x: 0, y: 0, id: null };
-                        } else {
-                          lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, id: word.id };
-                          lastActiveWordRef.current = { id: word.id, word: word.word };
-                        }
-                      } catch (err) {
-                        console.error('处理触摸事件失败:', err);
+            <section className="app-grid" aria-label="words">
+              {currentWords.map((word) => (
+                <div
+                  key={word.id}
+                  className={`ui-card word-card ${rememberedWords[word.id] ? 'remembered' : ''}`}
+                  onClick={() => {
+                    lastActiveWordRef.current = { id: word.id, word: word.word };
+                    toggleRemember(word.id);
+                  }}
+                  title={showDefinitions ? undefined : `${word.definition}`}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    lastActiveWordRef.current = { id: word.id, word: word.word };
+                    toggleDefinition(word.id);
+                  }}
+                  onTouchEnd={(e) => {
+                    try {
+                      const touch = e.changedTouches && e.changedTouches[0];
+                      if (!touch) return;
+                      const now = Date.now();
+                      const last = lastTapRef.current;
+                      const dx = touch.clientX - (last.x || 0);
+                      const dy = touch.clientY - (last.y || 0);
+                      const dt = now - (last.time || 0);
+                      const dist = Math.hypot(dx, dy);
+                      if (last.id === word.id && dt < 300 && dist < 30) {
+                        suppressNextClickRef.current = true;
+                        lastActiveWordRef.current = { id: word.id, word: word.word };
+                        toggleDefinition(word.id);
+                        lastTapRef.current = { time: 0, x: 0, y: 0, id: null };
+                      } else {
+                        lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY, id: word.id };
+                        lastActiveWordRef.current = { id: word.id, word: word.word };
                       }
-                    }}
-                  >
-                    <div className="word-card__top">
-                      <span className="word-text">{word.word}</span>
-                      <div className="ui-cluster">
-                        <button
-                          className="ui-btn ui-btn--ghost app-icon-btn"
-                          type="button"
-                          aria-label="播放发音"
-                          title="播放发音"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            lastActiveWordRef.current = { id: word.id, word: word.word };
-                            playPronunciation(word.word);
-                          }}
-                        >
-                          🔊
-                        </button>
-                        {rememberedWords[word.id] && <span className="ui-badge ui-badge--success">✓</span>}
-                      </div>
+                    } catch (err) {
+                      console.error('处理触摸事件失败:', err);
+                    }
+                  }}
+                >
+                  <div className="word-card__top">
+                    <span className="word-text">{word.word}</span>
+                    <div className="ui-cluster">
+                      <button
+                        className="ui-btn ui-btn--ghost app-icon-btn"
+                        type="button"
+                        aria-label="播放发音"
+                        title="播放发音"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          lastActiveWordRef.current = { id: word.id, word: word.word };
+                          playPronunciation(word.word);
+                        }}
+                      >
+                        🔊
+                      </button>
+                      {rememberedWords[word.id] && <span className="ui-badge ui-badge--success">✓</span>}
                     </div>
-
-                    {(showDefinitions || visibleDefs[word.id]) && (
-                      <div className="word-definition">{word.definition}</div>
-                    )}
                   </div>
-                ))}
-              </section>
 
-              <footer className="app-footer" aria-label="pagination">
-                <div className="ui-container app-footer__inner">
-                  <button
-                    className="ui-btn ui-btn--secondary"
-                    type="button"
-                    onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                    disabled={currentPage === 1}
-                  >
-                    上一页
-                  </button>
-                  <input
-                    type="number"
-                    min="1"
-                    max={totalPages}
-                    value={currentPage}
-                    onChange={(e) => {
-                      const page = parseInt(e.target.value);
-                      if (page >= 1 && page <= totalPages && !isNaN(page)) {
-                        handlePageChange(page);
-                      }
-                    }}
-                    className="ui-input app-page-input"
-                    aria-label="当前页"
-                  />
-                  <span className="ui-badge ui-badge--muted">/ {totalPages}</span>
-                  <button
-                    className="ui-btn ui-btn--secondary"
-                    type="button"
-                    onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
-                    disabled={currentPage === totalPages}
-                  >
-                    下一页
-                  </button>
+                  {(showDefinitions || visibleDefs[word.id]) && (
+                    <div className="word-definition">{word.definition}</div>
+                  )}
                 </div>
-              </footer>
-            </>
+              ))}
+            </section>
           )}
         </div>
+
+        {!loading && !error && (
+          <footer className="app-footer" aria-label="pagination">
+            <div className="ui-container app-footer__inner">
+              <button
+                className="ui-btn ui-btn--secondary"
+                type="button"
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                上一页
+              </button>
+              <input
+                type="number"
+                min="1"
+                max={totalPages}
+                value={currentPage}
+                onChange={(e) => {
+                  const page = parseInt(e.target.value);
+                  if (page >= 1 && page <= totalPages && !isNaN(page)) {
+                    handlePageChange(page);
+                  }
+                }}
+                className="ui-input app-page-input"
+                aria-label="当前页"
+              />
+              <span className="ui-badge ui-badge--muted">/ {totalPages}</span>
+              <button
+                className="ui-btn ui-btn--secondary"
+                type="button"
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                下一页
+              </button>
+            </div>
+          </footer>
+        )}
       </main>
     </div>
   );
