@@ -32,10 +32,10 @@ describe('App UI logic', () => {
     render(<App />);
 
     expect(await screen.findByText('word1')).toBeInTheDocument();
-    expect(screen.getByText('/ 3')).toBeInTheDocument();
+    expect(screen.getByText('/ 12')).toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'j' });
-    expect(await screen.findByText('word6')).toBeInTheDocument();
+    expect(await screen.findByText('word2')).toBeInTheDocument();
     expect(screen.queryByText('word1')).not.toBeInTheDocument();
 
     fireEvent.keyDown(window, { key: 'k' });
@@ -86,7 +86,7 @@ describe('App UI logic', () => {
 
     fireEvent.keyDown(window, { key: 'i' });
     await waitFor(() => {
-      expect(screen.getAllByText('✓')).toHaveLength(5);
+      expect(screen.getAllByText('✓')).toHaveLength(1);
     });
 
     fireEvent.keyDown(window, { key: 'i' });
@@ -99,6 +99,10 @@ describe('App UI logic', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    expect(await screen.findByText('word1')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'j' });
+    expect(await screen.findByText('word2')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'j' });
     const word = await screen.findByText('word3');
     const card = word.closest('.word-card');
     expect(card).toBeTruthy();

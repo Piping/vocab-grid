@@ -8,7 +8,7 @@ function App() {
   const [words, setWords] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [rememberedWords, setRememberedWords] = useState({});
-  const [wordsPerPage, setWordsPerPage] = useState(5);
+  const [wordsPerPage, setWordsPerPage] = useState(1);
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -16,6 +16,7 @@ function App() {
   const [ttsVoice, setTtsVoice] = useState('en_US-hfc_female-medium');
   const [availableVoices, setAvailableVoices] = useState([]);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [isMoreSettingsOpen, setIsMoreSettingsOpen] = useState(false);
   // 导入导出相关
   const [mergeOnImport, setMergeOnImport] = useState(true);
   const importFileInputRef = useRef(null);
@@ -372,6 +373,10 @@ function App() {
   // 添加J/K快捷键控制分页 + U 播放
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsMoreSettingsOpen(false);
+        return;
+      }
       // 仅当没有输入框被聚焦时才触发快捷键
       if (document.activeElement.tagName !== 'INPUT') {
         if (e.key === 'j') {
@@ -638,9 +643,20 @@ function App() {
               />
             </div>
 
-            <details className="app-toolbar__more">
-              <summary className="app-toolbar__more-summary">更多设置</summary>
-              <div className="ui-card app-toolbar__more-panel">
+            <button
+              type="button"
+              className="ui-btn ui-btn--ghost app-toolbar__more-btn"
+              aria-expanded={isMoreSettingsOpen}
+              aria-controls="moreSettingsPanel"
+              onClick={() => setIsMoreSettingsOpen((v) => !v)}
+            >
+              更多设置
+            </button>
+          </div>
+
+          {isMoreSettingsOpen && (
+            <div className="ui-container">
+              <div className="ui-card app-toolbar__more-panel" id="moreSettingsPanel">
                 <div className="ui-stack">
                   <div className="app-settings__row">
                     <div className="ui-field app-field--compact">
@@ -702,8 +718,8 @@ function App() {
                   </div>
                 </div>
               </div>
-            </details>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
